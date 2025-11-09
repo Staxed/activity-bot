@@ -3,6 +3,7 @@
 import asyncio
 import signal
 import sys
+from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
@@ -46,10 +47,18 @@ async def main() -> None:
     def signal_handler(sig: int) -> None:
         logger.info("application.signal.received", signal=signal.Signals(sig).name)
         task = loop.create_task(shutdown())
-        task.add_done_callback(lambda _: loop.stop())
+
+        def stop_loop(_: Any) -> None:
+            loop.stop()
+
+        task.add_done_callback(stop_loop)
 
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))
+
+        def make_handler(s: int = sig) -> None:
+            signal_handler(s)
+
+        loop.add_signal_handler(sig, make_handler)
 
     try:
         await startup()

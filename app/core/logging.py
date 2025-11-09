@@ -47,7 +47,7 @@ def setup_logging(log_level: str = "INFO") -> None:
     )
 
 
-def get_logger(name: str) -> structlog.BoundLogger:  # type: ignore[type-arg]
+def get_logger(name: str) -> structlog.BoundLogger:
     """Get a structured logger instance.
 
     Args:
@@ -56,7 +56,7 @@ def get_logger(name: str) -> structlog.BoundLogger:  # type: ignore[type-arg]
     Returns:
         Configured structlog logger
     """
-    return structlog.get_logger(name)
+    return structlog.get_logger(name)  # type: ignore[no-any-return]
 
 
 def set_correlation_id(correlation_id: str) -> None:

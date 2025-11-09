@@ -53,7 +53,7 @@ module = ["structlog.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["*.tests.*","test_*"]
+module = ["*.tests.*","app.core.tests.test_config","app.core.tests.test_logging","app.core.tests.test_state"]
 disallow_untyped_defs = false
 
 [tool.pytest.ini_options]

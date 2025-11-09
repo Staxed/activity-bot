@@ -44,7 +44,8 @@ class StateManager:
         with self.lock:
             try:
                 content = self.file_path.read_text()
-                return json.loads(content)
+                result: dict[str, Any] = json.loads(content)
+                return result
             except json.JSONDecodeError as e:
                 logger.warning(
                     "state.file.corrupted",
@@ -99,7 +100,8 @@ class StateManager:
         """
         state = self._read_state()
         repo_key = f"{owner}/{repo}"
-        return state.get("last_commit_sha", {}).get(repo_key)
+        sha: str | None = state.get("last_commit_sha", {}).get(repo_key)
+        return sha
 
     def set_last_commit_sha(self, owner: str, repo: str, sha: str) -> None:
         """Update the last processed commit SHA for a repository.

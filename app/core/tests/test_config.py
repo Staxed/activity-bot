@@ -14,7 +14,7 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DISCORD_TOKEN", "discord_token")
     monkeypatch.setenv("DISCORD_CHANNEL_ID", "123456789")
 
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 
     assert settings.github_token == "test_token"
     assert settings.github_repos == "owner/repo1,owner/repo2"
@@ -29,7 +29,7 @@ def test_settings_github_repo_list_parsing(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("DISCORD_TOKEN", "discord_token")
     monkeypatch.setenv("DISCORD_CHANNEL_ID", "123456789")
 
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 
     assert settings.github_repo_list == ["owner/repo1", "owner/repo2"]
 
@@ -42,7 +42,7 @@ def test_settings_private_repo_list_parsing(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("DISCORD_TOKEN", "discord_token")
     monkeypatch.setenv("DISCORD_CHANNEL_ID", "123456789")
 
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 
     assert settings.private_repo_list == ["owner/private1", "owner/private2"]
 
@@ -54,7 +54,7 @@ def test_settings_private_repo_list_empty(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("DISCORD_TOKEN", "discord_token")
     monkeypatch.setenv("DISCORD_CHANNEL_ID", "123456789")
 
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 
     assert settings.private_repo_list == []
 
@@ -66,7 +66,7 @@ def test_settings_default_values(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DISCORD_TOKEN", "discord_token")
     monkeypatch.setenv("DISCORD_CHANNEL_ID", "123456789")
 
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 
     assert settings.log_level == "INFO"
     assert settings.state_file_path == "data/state.json"
@@ -86,7 +86,7 @@ def test_settings_log_level_validation_valid(monkeypatch: pytest.MonkeyPatch) ->
 
     for level in valid_levels:
         monkeypatch.setenv("LOG_LEVEL", level)
-        settings = Settings()
+        settings = Settings()  # type: ignore[call-arg]
         assert settings.log_level == level
 
 
@@ -99,7 +99,7 @@ def test_settings_log_level_validation_invalid(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("LOG_LEVEL", "INVALID")
 
     with pytest.raises(ConfigError, match="Invalid log level"):
-        Settings()
+        Settings()  # type: ignore[call-arg]
 
 
 def test_settings_poll_interval_validation_valid(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,7 +111,7 @@ def test_settings_poll_interval_validation_valid(monkeypatch: pytest.MonkeyPatch
 
     for interval in [1, 30, 60]:
         monkeypatch.setenv("POLL_INTERVAL_MINUTES", str(interval))
-        settings = Settings()
+        settings = Settings()  # type: ignore[call-arg]
         assert settings.poll_interval_minutes == interval
 
 
@@ -124,7 +124,7 @@ def test_settings_poll_interval_validation_too_low(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("POLL_INTERVAL_MINUTES", "0")
 
     with pytest.raises(ConfigError, match="Poll interval must be between 1 and 60"):
-        Settings()
+        Settings()  # type: ignore[call-arg]
 
 
 def test_settings_poll_interval_validation_too_high(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,7 +136,7 @@ def test_settings_poll_interval_validation_too_high(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("POLL_INTERVAL_MINUTES", "61")
 
     with pytest.raises(ConfigError, match="Poll interval must be between 1 and 60"):
-        Settings()
+        Settings()  # type: ignore[call-arg]
 
 
 def test_settings_missing_required_field(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,7 +147,7 @@ def test_settings_missing_required_field(monkeypatch: pytest.MonkeyPatch) -> Non
     # Missing GITHUB_TOKEN
 
     with pytest.raises(ValidationError):
-        Settings()
+        Settings()  # type: ignore[call-arg]
 
 
 def test_get_settings_caching(monkeypatch: pytest.MonkeyPatch) -> None:
