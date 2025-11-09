@@ -29,3 +29,9 @@ class StateError(ActivityBotError):
     """Raised when state persistence operations fail."""
 
     pass
+
+
+class GitHubPollingError(ActivityBotError):
+    """Raised when polling fails consecutively beyond threshold."""
+
+    pass
