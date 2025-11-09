@@ -7,13 +7,22 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
-from app.shared.exceptions import ConfigError
+from app.core.state import StateManager
+from app.github.client import GitHubClient
+from app.github.polling import GitHubPollingService
+from app.shared.exceptions import ConfigError, GitHubAPIError, GitHubPollingError
 
 logger = get_logger(__name__)
+
+# Module-level variables for lifecycle management
+github_client: GitHubClient | None = None
+polling_service: GitHubPollingService | None = None
 
 
 async def startup() -> None:
     """Initialize application on startup."""
+    global github_client, polling_service
+
     settings = get_settings()
 
     logger.info(
@@ -29,13 +38,48 @@ async def startup() -> None:
         state_file=settings.state_file_path,
     )
 
+    # Initialize GitHub client
+    github_client = GitHubClient(settings.github_token)
+    await github_client.__aenter__()
+
+    # Validate GitHub token and get username
+    try:
+        username = await github_client.get_authenticated_user()
+        logger.info("github.auth.validated", username=username)
+    except GitHubAPIError as e:
+        logger.error("github.auth.failed", error=str(e))
+        await github_client.__aexit__(None, None, None)
+        raise ConfigError(f"Invalid GitHub token: {e}") from e
+
+    # Initialize state manager
+    state = StateManager(settings.state_file_path)
+
+    # Initialize and start polling service
+    polling_service = GitHubPollingService(
+        client=github_client,
+        state=state,
+        settings=settings,
+        username=username,
+    )
+    await polling_service.start()
+
     logger.info("application.initialization.completed")
 
 
 async def shutdown() -> None:
     """Cleanup on application shutdown."""
+    global github_client, polling_service
+
     logger.info("application.shutdown.started")
-    # TODO: Add cleanup for Discord bot, GitHub client, etc. in future phases
+
+    # Stop polling service
+    if polling_service:
+        await polling_service.stop()
+
+    # Close GitHub client
+    if github_client:
+        await github_client.__aexit__(None, None, None)
+
     logger.info("application.shutdown.completed")
 
 
