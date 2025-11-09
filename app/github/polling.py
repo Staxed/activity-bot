@@ -50,9 +50,7 @@ class GitHubPollingService:
         self.running = False
         self.task: asyncio.Task[None] | None = None
 
-    async def _fetch_events_until_last_id(
-        self, last_event_id: str | None
-    ) -> list[dict[str, Any]]:
+    async def _fetch_events_until_last_id(self, last_event_id: str | None) -> list[dict[str, Any]]:
         """Fetch events from GitHub API until last_event_id is found.
 
         Args:
@@ -142,9 +140,7 @@ class GitHubPollingService:
                     logger.info("github.poll.first_run", event_id=newest_id)
                 else:
                     # No events at all, fetch first page to get latest ID
-                    first_page = await self.client.fetch_user_events(
-                        self.username, page=1
-                    )
+                    first_page = await self.client.fetch_user_events(self.username, page=1)
                     if first_page:
                         newest_id = first_page[0]["id"]
                         self.state.set_last_event_id(newest_id)

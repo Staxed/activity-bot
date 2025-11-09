@@ -69,9 +69,7 @@ class CommitEvent(BaseModel):
         url = f"https://github.com/{repo_owner}/{repo_name}/commit/{sha}"
 
         # Parse timestamp from ISO format
-        timestamp = datetime.fromisoformat(
-            commit["author"]["date"].replace("Z", "+00:00")
-        )
+        timestamp = datetime.fromisoformat(commit["author"]["date"].replace("Z", "+00:00"))
 
         return cls(
             sha=sha,

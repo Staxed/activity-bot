@@ -110,7 +110,18 @@ async def test_poll_once_pagination(
     ]
 
     # Mock fetch to return pages sequentially, then empty lists for subsequent calls
-    mock_client.fetch_user_events.side_effect = [page1_events, page2_events, [], [], [], [], [], [], [], []]
+    mock_client.fetch_user_events.side_effect = [
+        page1_events,
+        page2_events,
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+    ]
 
     service = GitHubPollingService(mock_client, mock_state, mock_settings, "testuser")
     collected = await service._fetch_events_until_last_id("95")

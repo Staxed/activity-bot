@@ -10,7 +10,7 @@ from app.core.logging import get_logger, setup_logging
 from app.core.state import StateManager
 from app.github.client import GitHubClient
 from app.github.polling import GitHubPollingService
-from app.shared.exceptions import ConfigError, GitHubAPIError, GitHubPollingError
+from app.shared.exceptions import ConfigError, GitHubAPIError
 
 logger = get_logger(__name__)
 

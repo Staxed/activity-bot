@@ -10,7 +10,9 @@ from structlog.types import EventDict, WrappedLogger
 correlation_id_var: ContextVar[str] = ContextVar("correlation_id", default="")
 
 
-def add_correlation_id(_logger: WrappedLogger, _method_name: str, event_dict: EventDict) -> EventDict:
+def add_correlation_id(
+    _logger: WrappedLogger, _method_name: str, event_dict: EventDict
+) -> EventDict:
     """Add correlation ID to log event if set."""
     correlation_id = correlation_id_var.get()
     if correlation_id:

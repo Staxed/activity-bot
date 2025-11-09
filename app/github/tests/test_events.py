@@ -161,7 +161,11 @@ def test_commit_event_url_construction() -> None:
     commit: dict[str, Any] = {
         "sha": "1234567890abcdef",
         "message": "Update docs",
-        "author": {"name": "Doc Writer", "email": "docs@example.com", "date": "2025-01-09T12:00:00Z"},
+        "author": {
+            "name": "Doc Writer",
+            "email": "docs@example.com",
+            "date": "2025-01-09T12:00:00Z",
+        },
     }
 
     commit_event = CommitEvent.from_github_event(event, commit)

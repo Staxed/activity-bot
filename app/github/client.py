@@ -103,9 +103,7 @@ class GitHubClient:
 
         raise GitHubAPIError("Failed to authenticate after retries")
 
-    async def fetch_user_events(
-        self, username: str, page: int = 1
-    ) -> list[dict[str, Any]]:
+    async def fetch_user_events(self, username: str, page: int = 1) -> list[dict[str, Any]]:
         """Fetch user events from GitHub API.
 
         Args:
