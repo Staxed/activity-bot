@@ -94,7 +94,8 @@ docker-compose.override.yml
 # Project-Specific
 # ------------------------------
 # Runtime state files
-data/
+data/*
+!data/.gitkeep
 state.json
 *.db
 *.sqlite
