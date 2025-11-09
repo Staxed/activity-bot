@@ -4,15 +4,12 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import pytest
-
 from app.core.state import StateManager
-from app.shared.exceptions import StateError
 
 
 def test_state_manager_creates_file(temp_state_file: Path) -> None:
     """Test that StateManager creates file with empty dict if not exists."""
-    manager = StateManager(temp_state_file)
+    _ = StateManager(temp_state_file)
 
     assert temp_state_file.exists()
 
@@ -24,7 +21,7 @@ def test_state_manager_creates_parent_directories(tmp_path: Path) -> None:
     """Test that StateManager creates parent directories if they don't exist."""
     nested_path = tmp_path / "nested" / "dir" / "state.json"
 
-    manager = StateManager(nested_path)
+    _ = StateManager(nested_path)
 
     assert nested_path.exists()
     assert nested_path.parent.exists()
@@ -118,9 +115,7 @@ def test_state_manager_read_existing_state(temp_state_file: Path) -> None:
     """Test that StateManager reads existing state on initialization."""
     # Pre-populate state file
     temp_state_file.parent.mkdir(parents=True, exist_ok=True)
-    temp_state_file.write_text(
-        json.dumps({"last_commit_sha": {"owner/repo": "existing_sha"}})
-    )
+    temp_state_file.write_text(json.dumps({"last_commit_sha": {"owner/repo": "existing_sha"}}))
 
     manager = StateManager(temp_state_file)
 
