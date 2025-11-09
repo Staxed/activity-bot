@@ -1,7 +1,7 @@
 """PostgreSQL database client with connection pooling."""
 
 import asyncio
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import asyncpg
 

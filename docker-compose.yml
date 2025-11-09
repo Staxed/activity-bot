@@ -43,7 +43,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
-      - ./migrations/001_initial_quotes.sql:/docker-entrypoint-initdb.d/001_initial_quotes.sql:ro
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U activity_bot -d activity_bot"]
       interval: 5s
