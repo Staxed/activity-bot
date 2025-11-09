@@ -1,6 +1,7 @@
 """Tests for database client."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Generator
 
 import asyncpg
 import pytest
@@ -10,15 +11,15 @@ from app.shared.exceptions import DatabaseError
 
 
 @pytest.fixture
-def mock_settings():
+def mock_settings() -> Generator[MagicMock, None, None]:
     """Mock Settings object for database tests."""
     settings = MagicMock()
     settings.db_host = "localhost"
     settings.db_port = 5432
     settings.db_name = "test_db"
     settings.db_user = "test_user"
-    settings.db_password = "test_password"
-    return settings
+    settings.db_password = "test_password"  # noqa: S105
+    yield settings
 
 
 @pytest.mark.asyncio

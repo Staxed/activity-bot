@@ -29,7 +29,13 @@ polling_service: GitHubPollingService | None = None
 
 async def startup() -> None:
     """Initialize application on startup."""
-    global database_client, quote_service, github_client, discord_bot, discord_poster, polling_service
+    global \
+        database_client, \
+        quote_service, \
+        github_client, \
+        discord_bot, \
+        discord_poster, \
+        polling_service
 
     settings = get_settings()
 

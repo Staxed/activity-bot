@@ -1,7 +1,7 @@
 """PostgreSQL database client with connection pooling."""
 
 import asyncio
-from typing import Any
+from typing import ClassVar
 
 import asyncpg
 
@@ -15,8 +15,8 @@ logger = get_logger(__name__)
 class DatabaseClient:
     """Async PostgreSQL client with connection pooling."""
 
-    MAX_RETRIES = 3
-    RETRY_DELAYS = [2, 4, 8]
+    MAX_RETRIES: ClassVar[int] = 3
+    RETRY_DELAYS: ClassVar[list[int]] = [2, 4, 8]
 
     def __init__(self) -> None:
         self.pool: asyncpg.Pool | None = None
