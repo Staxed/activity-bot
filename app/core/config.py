@@ -22,8 +22,6 @@ class Settings(BaseSettings):
 
     # GitHub configuration
     github_token: str
-    github_repos: str
-    private_repos: str = ""
 
     # Discord configuration
     discord_token: str
@@ -57,18 +55,6 @@ class Settings(BaseSettings):
         if not 1 <= v <= 60:
             raise ConfigError(f"Poll interval must be between 1 and 60 minutes, got {v}")
         return v
-
-    @property
-    def github_repo_list(self) -> list[str]:
-        """Parse comma-separated github_repos into a list."""
-        return [repo.strip() for repo in self.github_repos.split(",") if repo.strip()]
-
-    @property
-    def private_repo_list(self) -> list[str]:
-        """Parse comma-separated private_repos into a list."""
-        if not self.private_repos:
-            return []
-        return [repo.strip() for repo in self.private_repos.split(",") if repo.strip()]
 
 
 def get_settings() -> Settings:
