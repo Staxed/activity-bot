@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     discord_token: str
     discord_channel_id: int
 
+    # Database configuration
+    db_host: str = "postgres"
+    db_port: int = 5432
+    db_name: str = "activity_bot"
+    db_user: str = "activity_bot"
+    db_password: str  # Required, no default
+
+    # Quote cache settings
+    quote_cache_refresh_minutes: int = 60
+
     # Application settings
     log_level: str = "INFO"
     state_file_path: str = "data/state.json"
@@ -56,6 +66,14 @@ class Settings(BaseSettings):
         """Validate poll interval is within acceptable range (1-60 minutes)."""
         if not 1 <= v <= 60:
             raise ConfigError(f"Poll interval must be between 1 and 60 minutes, got {v}")
+        return v
+
+    @field_validator("quote_cache_refresh_minutes")
+    @classmethod
+    def validate_quote_refresh_interval(cls, v: int) -> int:
+        """Validate quote cache refresh interval (1-1440 minutes / 24 hours)."""
+        if not 1 <= v <= 1440:
+            raise ConfigError(f"Quote refresh interval must be 1-1440 minutes, got {v}")
         return v
 
     @property
