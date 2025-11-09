@@ -32,27 +32,19 @@ def group_commits_by_author(commits: list[CommitEvent]) -> dict[str, dict[str, l
 
 
 def format_commit_time(timestamp: datetime) -> str:
-    """Format commit timestamp based on recency.
+    """Format commit timestamp using Discord's dynamic timestamp.
+
+    Discord timestamps automatically show in the user's local timezone.
 
     Args:
         timestamp: Commit timestamp
 
     Returns:
-        Formatted time string:
-        - Today: "2:30 PM"
-        - This year: "Nov 9 at 2:30 PM"
-        - Other years: "Nov 9, 2025 at 2:30 PM"
+        Discord timestamp string that renders in user's local time
+        Format: <t:UNIX_TIMESTAMP:f> shows short date/time (e.g., "November 9, 2025 1:18 PM")
     """
-    now = datetime.now(timestamp.tzinfo)
-    same_day = now.date() == timestamp.date()
-    same_year = now.year == timestamp.year
-
-    if same_day:
-        return timestamp.strftime("%-I:%M %p")
-    elif same_year:
-        return timestamp.strftime("%b %-d at %-I:%M %p")
-    else:
-        return timestamp.strftime("%b %-d, %Y at %-I:%M %p")
+    unix_timestamp = int(timestamp.timestamp())
+    return f"<t:{unix_timestamp}:f>"
 
 
 def truncate_message(message: str, max_length: int = 200) -> str:
@@ -111,8 +103,21 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
         # Sort commits within repo by timestamp (oldest first)
         repo_commits.sort(key=lambda c: c.timestamp)
 
+        # Check if repo is private (all commits in same repo have same privacy)
+        is_private = not repo_commits[0].is_public
+
         # Build commit lines: • [msg](url) (branch) - time (public repos only get links)
         lines = []
+
+        # Add repo name as header (clickable for public, plain text for private)
+        if is_private:
+            lines.append(f"**{repo_name} [Private]**")
+            field_name = "\u200b"  # Zero-width space (invisible field name)
+        else:
+            repo_url = f"https://github.com/{repo_name}"
+            lines.append(f"**[{repo_name}]({repo_url})**")
+            field_name = "\u200b"  # Zero-width space (invisible field name)
+
         for commit in repo_commits:
             truncated_msg = truncate_message(commit.message)
             time_str = format_commit_time(commit.timestamp)
@@ -131,28 +136,45 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
         if len(field_value) > 1024:
             field_value = field_value[:1021] + "..."
 
-        fields.append((repo_name, field_value))
+        fields.append((field_name, field_value))
 
     # Split fields into chunks of 25 (Discord limit)
     embeds: list[discord.Embed] = []
     total_commits = len(all_commits)
 
+    # Get author info from first commit (all commits have same author)
+    first_commit = all_commits[0]
+    author_username = first_commit.author_username
+    author_avatar_url = first_commit.author_avatar_url
+    author_profile_url = f"https://github.com/{author_username}"
+
     for chunk_idx, chunk_start in enumerate(range(0, len(fields), 25)):
         chunk_fields = fields[chunk_start : chunk_start + 25]
 
-        # Create embed
-        embed = discord.Embed(
-            title=f"{total_commits} commit{'s' if total_commits != 1 else ''} by {author}",
-            description=get_random_quote(),
-            color=0x28A745,  # GitHub green
-            timestamp=all_commits[-1].timestamp,  # Latest commit timestamp
-        )
+        # Build author line with commit count
+        commit_word = "commit" if total_commits == 1 else "commits"
+        author_line = f"{author} made {total_commits} {commit_word}"
 
         # Add multipart indicator if multiple embeds
         if len(fields) > 25:
             part_num = chunk_idx + 1
             total_parts = (len(fields) + 24) // 25
-            embed.title = f"{total_commits} commit{'s' if total_commits != 1 else ''} by {author} ({part_num}/{total_parts})"
+            author_line += f" ({part_num}/{total_parts})"
+
+        # Create embed with quote in description (with quotes and italics)
+        quote = get_random_quote()
+        embed = discord.Embed(
+            description=f'*"{quote}"*',
+            color=0x28A745,  # GitHub green
+            timestamp=all_commits[-1].timestamp,  # Latest commit timestamp
+        )
+
+        # Set author with avatar, profile link, and commit count
+        embed.set_author(
+            name=author_line,
+            url=author_profile_url,
+            icon_url=author_avatar_url,
+        )
 
         # Add fields
         for field_name, field_value in chunk_fields:

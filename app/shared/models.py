@@ -14,6 +14,8 @@ class CommitEvent(BaseModel):
         short_sha: 7-character short SHA for display
         author: Commit author name
         author_email: Commit author email address
+        author_avatar_url: GitHub avatar URL for the author
+        author_username: GitHub username for profile link
         message: Commit message (first line only)
         message_body: Full commit message including body
         repo_owner: Repository owner username
@@ -28,6 +30,8 @@ class CommitEvent(BaseModel):
     short_sha: str = Field(..., description="7-character short SHA")
     author: str = Field(..., description="Commit author name")
     author_email: str = Field(..., description="Commit author email")
+    author_avatar_url: str = Field(..., description="GitHub avatar URL")
+    author_username: str = Field(..., description="GitHub username")
     message: str = Field(..., description="Commit message (first line)")
     message_body: str = Field(..., description="Full commit message")
     repo_owner: str = Field(..., description="Repository owner")
@@ -73,11 +77,18 @@ class CommitEvent(BaseModel):
         # Parse timestamp from ISO format
         timestamp = datetime.fromisoformat(commit["author"]["date"].replace("Z", "+00:00"))
 
+        # Get actor info from event (GitHub user who pushed)
+        actor = event.get("actor", {})
+        author_username = actor.get("login", commit["author"]["name"])
+        author_avatar_url = actor.get("avatar_url", "")
+
         return cls(
             sha=sha,
             short_sha=sha[:7],
             author=commit["author"]["name"],
             author_email=commit["author"]["email"],
+            author_avatar_url=author_avatar_url,
+            author_username=author_username,
             message=message,
             message_body=message_body,
             repo_owner=repo_owner,
@@ -130,11 +141,18 @@ class CommitEvent(BaseModel):
         # Parse timestamp from ISO format
         timestamp = datetime.fromisoformat(commit_data["author"]["date"].replace("Z", "+00:00"))
 
+        # Get actor info from event (GitHub user who pushed)
+        actor = event.get("actor", {})
+        author_username = actor.get("login", commit_data["author"]["name"])
+        author_avatar_url = actor.get("avatar_url", "")
+
         return cls(
             sha=sha,
             short_sha=sha[:7],
             author=commit_data["author"]["name"],
             author_email=commit_data["author"]["email"],
+            author_avatar_url=author_avatar_url,
+            author_username=author_username,
             message=message,
             message_body=message_body,
             repo_owner=repo_owner,
