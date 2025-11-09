@@ -111,12 +111,18 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
         # Sort commits within repo by timestamp (oldest first)
         repo_commits.sort(key=lambda c: c.timestamp)
 
-        # Build commit lines: • [msg](url) (branch) - time
+        # Build commit lines: • [msg](url) (branch) - time (public repos only get links)
         lines = []
         for commit in repo_commits:
             truncated_msg = truncate_message(commit.message)
             time_str = format_commit_time(commit.timestamp)
-            line = f"• [{truncated_msg}]({commit.url}) (`{commit.branch}`) - {time_str}"
+
+            # Only link public repos (private repos aren't accessible to others)
+            if commit.is_public:
+                line = f"• [{truncated_msg}]({commit.url}) (`{commit.branch}`) - {time_str}"
+            else:
+                line = f"• {truncated_msg} (`{commit.branch}`) - {time_str}"
+
             lines.append(line)
 
         field_value = "\n".join(lines)

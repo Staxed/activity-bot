@@ -21,6 +21,7 @@ class CommitEvent(BaseModel):
         timestamp: Commit timestamp
         url: GitHub commit URL
         branch: Branch name (extracted from ref)
+        is_public: Whether the repository is public
     """
 
     sha: str = Field(..., description="Full commit SHA")
@@ -34,6 +35,7 @@ class CommitEvent(BaseModel):
     timestamp: datetime = Field(..., description="Commit timestamp")
     url: str = Field(..., description="GitHub commit URL")
     branch: str = Field(..., description="Branch name")
+    is_public: bool = Field(..., description="Whether the repository is public")
 
     @classmethod
     def from_github_event(cls, event: dict[str, Any], commit: dict[str, Any]) -> "CommitEvent":
@@ -83,6 +85,7 @@ class CommitEvent(BaseModel):
             timestamp=timestamp,
             url=url,
             branch=branch,
+            is_public=event.get("public", True),
         )
 
     @classmethod
@@ -139,4 +142,5 @@ class CommitEvent(BaseModel):
             timestamp=timestamp,
             url=url,
             branch=branch,
+            is_public=event.get("public", True),
         )
