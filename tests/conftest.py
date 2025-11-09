@@ -32,8 +32,6 @@ def mock_settings(temp_state_file: Path) -> Settings:
     """
     return Settings(
         github_token="test_github_token",
-        github_repos="owner/repo1,owner/repo2",
-        private_repos="owner/private-repo",
         discord_token="test_discord_token",
         discord_channel_id=123456789012345678,
         log_level="INFO",
