@@ -45,8 +45,8 @@ async def main() -> None:
 
     def signal_handler(sig: int) -> None:
         logger.info("application.signal.received", signal=signal.Signals(sig).name)
-        loop.create_task(shutdown())
-        loop.stop()
+        task = loop.create_task(shutdown())
+        task.add_done_callback(lambda _: loop.stop())
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))

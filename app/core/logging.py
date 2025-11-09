@@ -2,7 +2,6 @@
 
 import logging
 from contextvars import ContextVar
-from typing import Any
 
 import structlog
 from structlog.types import EventDict, WrappedLogger
@@ -11,9 +10,7 @@ from structlog.types import EventDict, WrappedLogger
 correlation_id_var: ContextVar[str] = ContextVar("correlation_id", default="")
 
 
-def add_correlation_id(
-    logger: WrappedLogger, method_name: str, event_dict: EventDict
-) -> EventDict:
+def add_correlation_id(_logger: WrappedLogger, _method_name: str, event_dict: EventDict) -> EventDict:
     """Add correlation ID to log event if set."""
     correlation_id = correlation_id_var.get()
     if correlation_id:
@@ -43,16 +40,14 @@ def setup_logging(log_level: str = "INFO") -> None:
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, log_level.upper())
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, log_level.upper())),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
 
-def get_logger(name: str) -> Any:
+def get_logger(name: str) -> structlog.BoundLogger:  # type: ignore[type-arg]
     """Get a structured logger instance.
 
     Args:
