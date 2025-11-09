@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     # GitHub configuration
     github_token: str
+    tracked_branches: str = "main"
+    ignore_branch_patterns: str = ""
 
     # Discord configuration
     discord_token: str
@@ -55,6 +57,30 @@ class Settings(BaseSettings):
         if not 1 <= v <= 60:
             raise ConfigError(f"Poll interval must be between 1 and 60 minutes, got {v}")
         return v
+
+    @property
+    def tracked_branches_list(self) -> list[str]:
+        """Parse comma-separated tracked branches into a list.
+
+        Returns:
+            List of branch names to track (e.g., ['main', 'develop'])
+        """
+        if not self.tracked_branches:
+            return []
+        return [branch.strip() for branch in self.tracked_branches.split(",") if branch.strip()]
+
+    @property
+    def ignore_branch_patterns_list(self) -> list[str]:
+        """Parse comma-separated ignore patterns into a list.
+
+        Returns:
+            List of branch patterns to ignore (e.g., ['feature/*', 'hotfix/*'])
+        """
+        if not self.ignore_branch_patterns:
+            return []
+        return [
+            pattern.strip() for pattern in self.ignore_branch_patterns.split(",") if pattern.strip()
+        ]
 
 
 def get_settings() -> Settings:

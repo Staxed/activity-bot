@@ -6,6 +6,7 @@ from typing import Any
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.core.state import StateManager
+from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
 from app.github.events import filter_push_events, parse_commits_from_events
 from app.shared.exceptions import GitHubPollingError
@@ -164,8 +165,25 @@ class GitHubPollingService:
             # Reverse to process oldest first (chronological order)
             commits.reverse()
 
-            # Log each commit discovered
+            # Filter commits by branch and log each tracked commit
+            tracked_count = 0
             for commit in commits:
+                # Check if this branch should be tracked
+                if not should_track_branch(
+                    commit.branch,
+                    self.settings.tracked_branches_list,
+                    self.settings.ignore_branch_patterns_list,
+                ):
+                    logger.debug(
+                        "github.commit.skipped",
+                        sha=commit.short_sha,
+                        repo=f"{commit.repo_owner}/{commit.repo_name}",
+                        branch=commit.branch,
+                        reason="branch_filtered",
+                    )
+                    continue
+
+                # Log tracked commit
                 logger.info(
                     "github.commit.discovered",
                     sha=commit.short_sha,
@@ -176,6 +194,7 @@ class GitHubPollingService:
                     timestamp=commit.timestamp.isoformat(),
                     url=commit.url,
                 )
+                tracked_count += 1
 
             # Update state with newest event ID
             newest_event_id = events[0]["id"]
@@ -183,13 +202,15 @@ class GitHubPollingService:
 
             logger.info(
                 "github.poll.complete",
-                commits_processed=len(commits),
+                commits_total=len(commits),
+                commits_tracked=tracked_count,
+                commits_filtered=len(commits) - tracked_count,
                 newest_event_id=newest_event_id,
             )
 
             # Reset failure counter on success
             self.consecutive_failures = 0
-            return len(commits)
+            return tracked_count
 
         except Exception as e:
             self.consecutive_failures += 1
