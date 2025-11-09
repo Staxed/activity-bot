@@ -63,4 +63,4 @@ markers = ["integration: marks tests requiring real database"]
 
 [tool.coverage.run]
 source = ["app"]
-omit = ["*/tests/*","*/test_*.py"]
+omit = ["*/tests/*","*/test_*.py","app/main.py"]
