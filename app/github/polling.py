@@ -1,7 +1,6 @@
 """GitHub event polling service with failure tracking."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import Settings
@@ -137,61 +136,27 @@ class GitHubPollingService:
                 last_event_id=last_event_id,
             )
 
-            # Fetch events since last poll (or past 24 hours on first run)
+            # Fetch events since last poll
+            events = await self._fetch_events_until_last_id(last_event_id)
+
+            # First run: store newest event ID without processing
             if last_event_id is None:
-                # First run: fetch events from past 24 hours
-                logger.info("github.poll.first_run.backfill_started")
-                cutoff_time = datetime.now(UTC) - timedelta(hours=24)
-                events = []
-
-                # Fetch pages until we reach events older than 24 hours
-                for page in range(1, self.MAX_PAGES + 1):
-                    page_events = await self.client.fetch_user_events(self.username, page=page)
-
-                    if not page_events:
-                        break
-
-                    # Check each event's timestamp
-                    for event in page_events:
-                        # GitHub event created_at is in ISO format
-                        event_time = datetime.fromisoformat(
-                            event["created_at"].replace("Z", "+00:00")
-                        )
-
-                        if event_time >= cutoff_time:
-                            events.append(event)
-                        else:
-                            # Found event older than 24 hours, stop here
-                            break
-
-                    # If we found an old event, stop fetching more pages
-                    if page_events and datetime.fromisoformat(
-                        page_events[-1]["created_at"].replace("Z", "+00:00")
-                    ) < cutoff_time:
-                        break
-
-                logger.info(
-                    "github.poll.first_run.backfill_complete",
-                    events_found=len(events),
-                    cutoff_time=cutoff_time.isoformat(),
-                )
-
-                # If no events found, just store the latest event ID and return
-                if not events:
+                if events:
+                    newest_id = events[0]["id"]
+                    self.state.set_last_event_id(newest_id)
+                    logger.info("github.poll.first_run", event_id=newest_id)
+                else:
+                    # No events at all, fetch first page to get latest ID
                     first_page = await self.client.fetch_user_events(self.username, page=1)
                     if first_page:
                         newest_id = first_page[0]["id"]
                         self.state.set_last_event_id(newest_id)
-                        logger.info("github.poll.first_run.no_events", event_id=newest_id)
+                        logger.info("github.poll.first_run", event_id=newest_id)
                     else:
-                        logger.info("github.poll.first_run.no_events_at_all")
-                    self.consecutive_failures = 0
-                    return 0
+                        logger.info("github.poll.first_run.no_events")
 
-                # Continue processing events below (don't return early)
-            else:
-                # Normal run: fetch events since last event ID
-                events = await self._fetch_events_until_last_id(last_event_id)
+                self.consecutive_failures = 0
+                return 0
 
             # No new events
             if not events:
