@@ -6,10 +6,12 @@ import sys
 from typing import Any
 
 from app.core.config import get_settings
+from app.core.database import DatabaseClient
 from app.core.logging import get_logger, setup_logging
 from app.core.state import StateManager
 from app.discord.bot import DiscordBot
 from app.discord.poster import DiscordPoster
+from app.discord.quotes import QuoteService, set_quote_service
 from app.github.client import GitHubClient
 from app.github.polling import GitHubPollingService
 from app.shared.exceptions import ConfigError, GitHubAPIError
@@ -17,6 +19,8 @@ from app.shared.exceptions import ConfigError, GitHubAPIError
 logger = get_logger(__name__)
 
 # Module-level variables for lifecycle management
+database_client: DatabaseClient | None = None
+quote_service: QuoteService | None = None
 github_client: GitHubClient | None = None
 discord_bot: DiscordBot | None = None
 discord_poster: DiscordPoster | None = None
@@ -25,7 +29,7 @@ polling_service: GitHubPollingService | None = None
 
 async def startup() -> None:
     """Initialize application on startup."""
-    global github_client, discord_bot, discord_poster, polling_service
+    global database_client, quote_service, github_client, discord_bot, discord_poster, polling_service
 
     settings = get_settings()
 
@@ -41,6 +45,19 @@ async def startup() -> None:
         poll_interval=settings.poll_interval_minutes,
         state_file=settings.state_file_path,
     )
+
+    # Initialize database client
+    database_client = DatabaseClient()
+    await database_client.__aenter__()
+    logger.info("database.client.initialized")
+
+    # Initialize quote service
+    quote_service = QuoteService(
+        db_client=database_client,
+        refresh_interval_minutes=settings.quote_cache_refresh_minutes,
+    )
+    await quote_service.start()
+    set_quote_service(quote_service)
 
     # Initialize GitHub client
     github_client = GitHubClient(settings.github_token)
@@ -81,7 +98,7 @@ async def startup() -> None:
 
 async def shutdown() -> None:
     """Cleanup on application shutdown."""
-    global github_client, discord_bot, polling_service
+    global database_client, quote_service, github_client, discord_bot, polling_service
 
     logger.info("application.shutdown.started")
 
@@ -96,6 +113,14 @@ async def shutdown() -> None:
     # Close GitHub client
     if github_client:
         await github_client.__aexit__(None, None, None)
+
+    # Stop quote service
+    if quote_service:
+        await quote_service.stop()
+
+    # Close database client
+    if database_client:
+        await database_client.__aexit__(None, None, None)
 
     logger.info("application.shutdown.completed")
 
