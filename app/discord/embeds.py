@@ -80,28 +80,27 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
         - 1024 chars per field value
         - 256 chars per field name
     """
-    # Flatten all commits and sort by timestamp (oldest first)
+    # Flatten all commits and sort by timestamp (newest first)
     all_commits: list[CommitEvent] = []
     for repo_commits in repos.values():
         all_commits.extend(repo_commits)
-    all_commits.sort(key=lambda c: c.timestamp)
+    all_commits.sort(key=lambda c: c.timestamp, reverse=True)
 
-    # Cap at 50 commits, track overflow
-    overflow_count = max(0, len(all_commits) - 50)
-    if overflow_count > 0:
-        all_commits = all_commits[:50]
+    total_commits = len(all_commits)
 
-    # Re-group capped commits by repo
-    capped_repos: dict[str, list[CommitEvent]] = defaultdict(list)
+    # Re-group commits by repo (we'll cap during field building to respect Discord limits)
+    repos_by_name: dict[str, list[CommitEvent]] = defaultdict(list)
     for commit in all_commits:
         repo_key = f"{commit.repo_owner}/{commit.repo_name}"
-        capped_repos[repo_key].append(commit)
+        repos_by_name[repo_key].append(commit)
 
-    # Build field data (one field per repo)
+    # Build field data (one field per repo) and track commits displayed
     fields: list[tuple[str, str]] = []
-    for repo_name, repo_commits in capped_repos.items():
-        # Sort commits within repo by timestamp (oldest first)
-        repo_commits.sort(key=lambda c: c.timestamp)
+    commits_displayed = 0
+
+    for repo_name, repo_commits in repos_by_name.items():
+        # Sort commits within repo by timestamp (newest first)
+        repo_commits.sort(key=lambda c: c.timestamp, reverse=True)
 
         # Check if repo is private (all commits in same repo have same privacy)
         is_private = not repo_commits[0].is_public
@@ -118,6 +117,8 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
             lines.append(f"**[{repo_name}]({repo_url})**")
             field_name = "\u200b"  # Zero-width space (invisible field name)
 
+        # Add commits to field value, stopping if we exceed 1024 char limit
+        commits_in_field = 0
         for commit in repo_commits:
             truncated_msg = truncate_message(commit.message)
             time_str = format_commit_time(commit.timestamp)
@@ -128,19 +129,24 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
             else:
                 line = f"• {truncated_msg} (`{commit.branch}`) - {time_str}"
 
+            # Check if adding this line would exceed Discord's 1024 char limit
+            test_value = "\n".join([*lines, line])
+            if len(test_value) > 1024:
+                # Can't fit this commit, stop adding to this field
+                break
+
             lines.append(line)
+            commits_in_field += 1
+            commits_displayed += 1
 
         field_value = "\n".join(lines)
-
-        # Ensure field value doesn't exceed Discord limit
-        if len(field_value) > 1024:
-            field_value = field_value[:1021] + "..."
-
         fields.append((field_name, field_value))
+
+    # Calculate overflow (commits that couldn't fit in the embed)
+    overflow_count = total_commits - commits_displayed
 
     # Split fields into chunks of 25 (Discord limit)
     embeds: list[discord.Embed] = []
-    total_commits = len(all_commits)
 
     # Get author info from first commit (all commits have same author)
     first_commit = all_commits[0]
@@ -151,7 +157,7 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
     for chunk_idx, chunk_start in enumerate(range(0, len(fields), 25)):
         chunk_fields = fields[chunk_start : chunk_start + 25]
 
-        # Build author line with commit count
+        # Build author line with total commit count
         commit_word = "commit" if total_commits == 1 else "commits"
         author_line = f"{author} made {total_commits} {commit_word}"
 
@@ -166,7 +172,7 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
         embed = discord.Embed(
             description=f'*"{quote}"*',
             color=0x28A745,  # GitHub green
-            timestamp=all_commits[-1].timestamp,  # Latest commit timestamp
+            timestamp=all_commits[0].timestamp,  # Latest commit timestamp (first since sorted newest first)
         )
 
         # Set author with avatar, profile link, and commit count
