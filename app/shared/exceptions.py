@@ -31,6 +31,12 @@ class StateError(ActivityBotError):
     pass
 
 
+class DatabaseError(ActivityBotError):
+    """Raised when database operations fail."""
+
+    pass
+
+
 class GitHubPollingError(ActivityBotError):
     """Raised when polling fails consecutively beyond threshold."""
 
