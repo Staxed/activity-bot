@@ -1,9 +1,9 @@
 """Pytest fixtures for Discord tests."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
+import pytest
 
 
 @pytest.fixture

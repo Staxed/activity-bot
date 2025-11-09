@@ -1,6 +1,6 @@
 """Tests for Discord poster with retry logic."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -8,7 +8,6 @@ import pytest
 
 from app.discord.bot import DiscordBot
 from app.discord.poster import DiscordPoster
-from app.shared.exceptions import DiscordAPIError
 from app.shared.models import CommitEvent
 
 
@@ -42,7 +41,7 @@ def sample_commit() -> CommitEvent:
         message_body="Test commit message",
         repo_owner="owner",
         repo_name="repo",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/aaaaaaa",
         branch="main",
     )
@@ -127,7 +126,7 @@ async def test_post_commits_merges_existing_queue(
         message_body="Another commit",
         repo_owner="owner",
         repo_name="repo",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/bbbbbbb",
         branch="main",
     )
@@ -154,7 +153,7 @@ async def test_post_commits_groups_by_author(mock_bot: MagicMock) -> None:
             message_body="Alice commit 1",
             repo_owner="owner",
             repo_name="repo",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             url="https://github.com/owner/repo/commit/aaaaaaa",
             branch="main",
         ),
@@ -167,7 +166,7 @@ async def test_post_commits_groups_by_author(mock_bot: MagicMock) -> None:
             message_body="Bob commit 1",
             repo_owner="owner",
             repo_name="repo",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             url="https://github.com/owner/repo/commit/bbbbbbb",
             branch="main",
         ),
@@ -273,7 +272,7 @@ async def test_partial_failure_partial_queue(mock_bot: MagicMock) -> None:
         message_body="Alice commit",
         repo_owner="owner",
         repo_name="repo",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/aaaaaaa",
         branch="main",
     )
@@ -287,7 +286,7 @@ async def test_partial_failure_partial_queue(mock_bot: MagicMock) -> None:
         message_body="Bob commit",
         repo_owner="owner",
         repo_name="repo",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/bbbbbbb",
         branch="main",
     )

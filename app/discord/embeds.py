@@ -70,9 +70,7 @@ def truncate_message(message: str, max_length: int = 200) -> str:
     return message
 
 
-def create_commit_embeds(
-    author: str, repos: dict[str, list[CommitEvent]]
-) -> list[discord.Embed]:
+def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> list[discord.Embed]:
     """Create Discord embeds for an author's commits.
 
     Groups commits by repository, handles Discord field limits (25 fields/embed),
@@ -156,7 +154,9 @@ def create_commit_embeds(
 
         # Add overflow footer on last embed
         if overflow_count > 0 and chunk_idx == (len(fields) - 1) // 25:
-            embed.set_footer(text=f"... and {overflow_count} more commit{'s' if overflow_count != 1 else ''}")
+            embed.set_footer(
+                text=f"... and {overflow_count} more commit{'s' if overflow_count != 1 else ''}"
+            )
 
         embeds.append(embed)
 

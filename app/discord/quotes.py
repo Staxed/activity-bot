@@ -18,7 +18,6 @@ QUOTES: list[str] = [
     "Walking on water and developing software from a specification are easy if both are frozen. — Edward V. Berard",
     "Measuring programming progress by lines of code is like measuring aircraft building progress by weight. — Bill Gates",
     "The most important property of a program is whether it accomplishes the intention of its user. — C.A.R. Hoare",
-
     # Debugging & Testing
     "Debugging is twice as hard as writing the code in the first place. — Brian Kernighan",
     "If debugging is the process of removing bugs, then programming must be the process of putting them in. — Edsger W. Dijkstra",
@@ -38,7 +37,6 @@ QUOTES: list[str] = [
     "The best debugging tool is a good night's sleep. — Anonymous",
     "Code never lies, comments sometimes do. — Ron Jeffries",
     "If you think your code works, you haven't tested it enough. — Anonymous",
-
     # Code Quality & Design
     "Premature optimization is the root of all evil. — Donald Knuth",
     "Simplicity is the soul of efficiency. — Austin Freeman",
@@ -58,7 +56,6 @@ QUOTES: list[str] = [
     "Don't repeat yourself. — Andy Hunt & Dave Thomas",
     "Explicit is better than implicit. — The Zen of Python",
     "Code should be written to minimize the time it would take for someone else to understand it. — Anonymous",
-
     # Programming Languages
     "There are only two kinds of languages: the ones people complain about and the ones nobody uses. — Bjarne Stroustrup",
     "I invented the term 'Object-Oriented', and I can tell you I did not have C++ in mind. — Alan Kay",
@@ -72,7 +69,6 @@ QUOTES: list[str] = [
     "Assembly language is too high-level. — Anonymous Hardware Engineer",
     "Every language has an optimization operator. In C++ that operator is '//'. — Anonymous",
     "The sooner you start coding, the longer the program will take. — Roy Carlson",
-
     # Git & Version Control
     "The problem with Git jokes is that everyone has their own version. — Anonymous",
     "git commit -m 'fixed stuff' — Every Developer at 3 AM",
@@ -83,7 +79,6 @@ QUOTES: list[str] = [
     "Real programmers commit directly to master. — Anonymous (Bad Advice)",
     "The three stages of learning git: 1) git commit 2) git commit -a 3) git push --force. — Anonymous",
     "There is no commit more permanent than the temporary fix. — Anonymous",
-
     # Humorous Observations
     "It works on my machine. ¯\\_(ツ)_/¯ — Every Developer",
     "Programming is like sex: one mistake and you're providing support for a lifetime. — Michael Sinz",
@@ -107,7 +102,6 @@ QUOTES: list[str] = [
     "Programming is 10% writing code and 90% understanding why it doesn't work. — Anonymous",
     "Roses are red, violets are blue, unexpected '{' on line 32. — Anonymous",
     "A programmer's wife tells him: 'While you're at the store, get milk.' He never comes back. — Anonymous",
-
     # Project Management & Team Work
     "The bearing of a child takes nine months, no matter how many women are assigned. — Fred Brooks",
     "Adding manpower to a late software project makes it later. — Fred Brooks",

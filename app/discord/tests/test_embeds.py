@@ -1,8 +1,6 @@
 """Tests for Discord embed creation and grouping logic."""
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from app.discord.embeds import (
     create_commit_embeds,
@@ -35,7 +33,7 @@ def create_test_commit(
         CommitEvent for testing
     """
     if timestamp is None:
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
     return CommitEvent(
         sha="a" * 40,
@@ -125,7 +123,7 @@ def test_truncate_message_over_limit() -> None:
 
 def test_format_commit_time_today() -> None:
     """Test formatting for commits made today."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = format_commit_time(now)
 
     # Should only contain time, not date
@@ -136,7 +134,7 @@ def test_format_commit_time_today() -> None:
 def test_format_commit_time_this_year() -> None:
     """Test formatting for commits this year but not today."""
     # Create a timestamp from 30 days ago
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     timestamp = now.replace(month=max(1, now.month - 1))
 
     result = format_commit_time(timestamp)
@@ -148,7 +146,7 @@ def test_format_commit_time_this_year() -> None:
 
 def test_format_commit_time_past_year() -> None:
     """Test formatting for commits from past years."""
-    timestamp = datetime(2023, 6, 15, 14, 30, tzinfo=timezone.utc)
+    timestamp = datetime(2023, 6, 15, 14, 30, tzinfo=UTC)
     result = format_commit_time(timestamp)
 
     # Should contain full date with year
@@ -287,8 +285,8 @@ def test_create_commit_embeds_color_is_github_green() -> None:
 
 def test_create_commit_embeds_timestamp_is_latest() -> None:
     """Test embed timestamp matches newest commit."""
-    older = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
-    newer = datetime(2024, 1, 2, 12, 0, tzinfo=timezone.utc)
+    older = datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
+    newer = datetime(2024, 1, 2, 12, 0, tzinfo=UTC)
 
     commits = [
         create_test_commit(timestamp=older),

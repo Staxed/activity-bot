@@ -149,7 +149,9 @@ class DiscordPoster:
                         error=str(e),
                         exc_info=True,
                     )
-                    raise DiscordAPIError(f"Failed to post embed after {self.MAX_RETRIES} retries") from e
+                    raise DiscordAPIError(
+                        f"Failed to post embed after {self.MAX_RETRIES} retries"
+                    ) from e
 
             except Exception as e:
                 # Non-HTTP exception
@@ -169,4 +171,6 @@ class DiscordPoster:
                         error=str(e),
                         exc_info=True,
                     )
-                    raise DiscordAPIError(f"Failed to post embed after {self.MAX_RETRIES} retries") from e
+                    raise DiscordAPIError(
+                        f"Failed to post embed after {self.MAX_RETRIES} retries"
+                    ) from e
