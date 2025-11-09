@@ -1,5 +1,6 @@
 """Tests for branch filtering utilities."""
 
+import pytest
 
 from app.github.branch_filter import should_track_branch
 
