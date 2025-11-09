@@ -8,6 +8,9 @@ services:
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./app:/app/app:ro
       - ./data:/app/data
@@ -30,6 +33,25 @@ services:
         max-file: "3"
     networks:
       - bot-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: activity-bot-postgres
+    environment:
+      POSTGRES_DB: activity_bot
+      POSTGRES_USER: activity_bot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - ./data/postgres/pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U activity_bot -d activity_bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+    restart: unless-stopped
 
 networks:
   bot-network:

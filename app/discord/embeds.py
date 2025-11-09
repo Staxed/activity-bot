@@ -172,7 +172,9 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
         embed = discord.Embed(
             description=f'*"{quote}"*',
             color=0x28A745,  # GitHub green
-            timestamp=all_commits[0].timestamp,  # Latest commit timestamp (first since sorted newest first)
+            timestamp=all_commits[
+                0
+            ].timestamp,  # Latest commit timestamp (first since sorted newest first)
         )
 
         # Set author with avatar, profile link, and commit count
