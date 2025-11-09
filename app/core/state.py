@@ -121,3 +121,24 @@ class StateManager:
 
         self._write_state(state)
         logger.info("state.updated", repo=repo_key, sha=sha[:7])
+
+    def get_last_event_id(self) -> str | None:
+        """Get the last processed GitHub event ID.
+
+        Returns:
+            Last processed event ID, or None if not set
+        """
+        state = self._read_state()
+        event_id: str | None = state.get("last_event_id")
+        return event_id
+
+    def set_last_event_id(self, event_id: str) -> None:
+        """Update the last processed GitHub event ID.
+
+        Args:
+            event_id: Event ID to store
+        """
+        state = self._read_state()
+        state["last_event_id"] = event_id
+        self._write_state(state)
+        logger.info("state.event_id.updated", event_id=event_id)

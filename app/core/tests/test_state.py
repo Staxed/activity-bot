@@ -148,3 +148,24 @@ def test_state_manager_thread_safe_writes(temp_state_file: Path) -> None:
     for repo_key, sha in content["last_commit_sha"].items():
         assert repo_key.startswith("owner/repo")
         assert sha.startswith("sha")
+
+
+def test_get_last_event_id_none_when_not_set(temp_state_file: Path) -> None:
+    """Test that get_last_event_id returns None when not set."""
+    manager = StateManager(temp_state_file)
+    assert manager.get_last_event_id() is None
+
+
+def test_set_and_get_last_event_id(temp_state_file: Path) -> None:
+    """Test that set and get event ID works correctly."""
+    manager = StateManager(temp_state_file)
+    manager.set_last_event_id("12345678900")
+    assert manager.get_last_event_id() == "12345678900"
+
+
+def test_set_last_event_id_persists_to_file(temp_state_file: Path) -> None:
+    """Test that event ID is persisted to JSON file."""
+    manager = StateManager(temp_state_file)
+    manager.set_last_event_id("12345678900")
+    content = json.loads(temp_state_file.read_text())
+    assert content["last_event_id"] == "12345678900"
