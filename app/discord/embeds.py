@@ -41,10 +41,10 @@ def format_commit_time(timestamp: datetime) -> str:
 
     Returns:
         Discord timestamp string that renders in user's local time
-        Format: <t:UNIX_TIMESTAMP:f> shows short date/time (e.g., "November 9, 2025 1:18 PM")
+        Format: <t:UNIX_TIMESTAMP:t> shows short time (e.g., "1:18 PM")
     """
     unix_timestamp = int(timestamp.timestamp())
-    return f"<t:{unix_timestamp}:f>"
+    return f"<t:{unix_timestamp}:t>"
 
 
 def truncate_message(message: str, max_length: int = 200) -> str:
