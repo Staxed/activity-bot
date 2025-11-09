@@ -166,7 +166,7 @@ class GitHubPollingService:
 
             # Filter and parse PushEvents
             push_events = filter_push_events(events)
-            commits = parse_commits_from_events(push_events)
+            commits = await parse_commits_from_events(push_events, self.client)
 
             # Reverse to process oldest first (chronological order)
             commits.reverse()

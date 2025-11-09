@@ -156,3 +156,72 @@ class GitHubClient:
                     raise GitHubAPIError(f"Network error: {e}") from e
 
         return []
+
+    async def compare_commits(
+        self, owner: str, repo: str, base: str, head: str
+    ) -> list[dict[str, Any]]:
+        """Fetch commits between two SHAs using GitHub comparison API.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            base: Base commit SHA (older)
+            head: Head commit SHA (newer)
+
+        Returns:
+            List of commit dictionaries from comparison API
+
+        Raises:
+            GitHubAPIError: If API request fails or network error occurs
+
+        Example:
+            >>> commits = await client.compare_commits(
+            ...     "owner", "repo",
+            ...     "abc123", "def456"
+            ... )
+        """
+        url = f"{self.BASE_URL}/repos/{owner}/{repo}/compare/{base}...{head}"
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                if not self.session:
+                    raise GitHubAPIError("Session not initialized")
+
+                async with self.session.get(url) as response:
+                    if response.status == 200:
+                        data: dict[str, Any] = await response.json()
+                        commits: list[dict[str, Any]] = data.get("commits", [])
+                        return commits
+                    elif response.status == 404:
+                        logger.warning(
+                            "github.compare.not_found",
+                            owner=owner,
+                            repo=repo,
+                            base=base[:7],
+                            head=head[:7],
+                        )
+                        return []
+                    elif response.status in (403, 429):
+                        remaining = response.headers.get("x-ratelimit-remaining")
+                        reset = response.headers.get("x-ratelimit-reset")
+                        logger.warning(
+                            "github.ratelimit",
+                            remaining=remaining,
+                            reset=reset,
+                            status=response.status,
+                        )
+                        raise GitHubAPIError(f"Rate limited: {response.status}")
+                    else:
+                        raise GitHubAPIError(f"API error: {response.status}")
+            except aiohttp.ClientError as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    logger.warning(
+                        "github.compare.retry",
+                        attempt=attempt + 1,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(self.RETRY_DELAYS[attempt])
+                else:
+                    raise GitHubAPIError(f"Network error: {e}") from e
+
+        return []

@@ -84,3 +84,59 @@ class CommitEvent(BaseModel):
             url=url,
             branch=branch,
         )
+
+    @classmethod
+    def from_github_comparison(cls, event: dict[str, Any], commit: dict[str, Any]) -> "CommitEvent":
+        """Parse GitHub comparison API commit into CommitEvent.
+
+        Used when PushEvent doesn't include inline commits and we fetch
+        them via the comparison API (/repos/{owner}/{repo}/compare/{base}...{head}).
+
+        Args:
+            event: GitHub PushEvent from Events API (for repo/branch context)
+            commit: Individual commit object from comparison API
+
+        Returns:
+            CommitEvent instance with parsed data
+
+        Example:
+            >>> event = {"repo": {"name": "owner/repo"}, "payload": {"ref": "refs/heads/main"}}
+            >>> commit = {"sha": "abc123...", "commit": {"message": "Fix", "author": {...}}}
+            >>> commit_event = CommitEvent.from_github_comparison(event, commit)
+        """
+        # Parse repo owner and name from "owner/repo" format
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        # Extract branch name from ref (e.g., "refs/heads/main" -> "main")
+        ref = event["payload"]["ref"]
+        branch = ref.replace("refs/heads/", "")
+
+        # Comparison API has nested commit object
+        commit_data = commit["commit"]
+
+        # Split commit message into first line and body
+        message_lines = commit_data["message"].split("\n", 1)
+        message = message_lines[0]
+        message_body = commit_data["message"]
+
+        # Build GitHub commit URL
+        sha = commit["sha"]
+        url = commit.get("html_url") or f"https://github.com/{repo_owner}/{repo_name}/commit/{sha}"
+
+        # Parse timestamp from ISO format
+        timestamp = datetime.fromisoformat(commit_data["author"]["date"].replace("Z", "+00:00"))
+
+        return cls(
+            sha=sha,
+            short_sha=sha[:7],
+            author=commit_data["author"]["name"],
+            author_email=commit_data["author"]["email"],
+            message=message,
+            message_body=message_body,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            timestamp=timestamp,
+            url=url,
+            branch=branch,
+        )
