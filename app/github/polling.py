@@ -1,7 +1,7 @@
 """GitHub event polling service with failure tracking."""
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import Settings
 from app.core.logging import get_logger
@@ -10,6 +10,9 @@ from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
 from app.github.events import filter_push_events, parse_commits_from_events
 from app.shared.exceptions import GitHubPollingError
+
+if TYPE_CHECKING:
+    from app.discord.poster import DiscordPoster
 
 logger = get_logger(__name__)
 
@@ -34,6 +37,7 @@ class GitHubPollingService:
         state: StateManager,
         settings: Settings,
         username: str,
+        discord_poster: "DiscordPoster | None" = None,
     ) -> None:
         """Initialize polling service with dependencies.
 
@@ -42,11 +46,13 @@ class GitHubPollingService:
             state: State manager for persistence
             settings: Application settings
             username: GitHub username to poll events for
+            discord_poster: Optional Discord poster for commit notifications
         """
         self.client = client
         self.state = state
         self.settings = settings
         self.username = username
+        self.discord_poster = discord_poster
         self.consecutive_failures = 0
         self.running = False
         self.task: asyncio.Task[None] | None = None
@@ -165,8 +171,8 @@ class GitHubPollingService:
             # Reverse to process oldest first (chronological order)
             commits.reverse()
 
-            # Filter commits by branch and log each tracked commit
-            tracked_count = 0
+            # Filter commits by branch and collect tracked commits
+            tracked_commits = []
             for commit in commits:
                 # Check if this branch should be tracked
                 if not should_track_branch(
@@ -194,7 +200,14 @@ class GitHubPollingService:
                     timestamp=commit.timestamp.isoformat(),
                     url=commit.url,
                 )
-                tracked_count += 1
+                tracked_commits.append(commit)
+
+            # Post tracked commits to Discord
+            if self.discord_poster and tracked_commits:
+                try:
+                    await self.discord_poster.post_commits(tracked_commits)
+                except Exception as e:
+                    logger.error("discord.post.error", error=str(e), exc_info=True)
 
             # Update state with newest event ID
             newest_event_id = events[0]["id"]
@@ -203,14 +216,14 @@ class GitHubPollingService:
             logger.info(
                 "github.poll.complete",
                 commits_total=len(commits),
-                commits_tracked=tracked_count,
-                commits_filtered=len(commits) - tracked_count,
+                commits_tracked=len(tracked_commits),
+                commits_filtered=len(commits) - len(tracked_commits),
                 newest_event_id=newest_event_id,
             )
 
             # Reset failure counter on success
             self.consecutive_failures = 0
-            return tracked_count
+            return len(tracked_commits)
 
         except Exception as e:
             self.consecutive_failures += 1

@@ -8,6 +8,8 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 from app.core.state import StateManager
+from app.discord.bot import DiscordBot
+from app.discord.poster import DiscordPoster
 from app.github.client import GitHubClient
 from app.github.polling import GitHubPollingService
 from app.shared.exceptions import ConfigError, GitHubAPIError
@@ -16,12 +18,14 @@ logger = get_logger(__name__)
 
 # Module-level variables for lifecycle management
 github_client: GitHubClient | None = None
+discord_bot: DiscordBot | None = None
+discord_poster: DiscordPoster | None = None
 polling_service: GitHubPollingService | None = None
 
 
 async def startup() -> None:
     """Initialize application on startup."""
-    global github_client, polling_service
+    global github_client, discord_bot, discord_poster, polling_service
 
     settings = get_settings()
 
@@ -54,12 +58,21 @@ async def startup() -> None:
     # Initialize state manager
     state = StateManager(settings.state_file_path)
 
+    # Initialize Discord bot
+    discord_bot = DiscordBot(settings.discord_token, settings.discord_channel_id)
+    await discord_bot.__aenter__()
+    logger.info("discord.bot.initialized")
+
+    # Create Discord poster
+    discord_poster = DiscordPoster(discord_bot)
+
     # Initialize and start polling service
     polling_service = GitHubPollingService(
         client=github_client,
         state=state,
         settings=settings,
         username=username,
+        discord_poster=discord_poster,
     )
     await polling_service.start()
 
@@ -68,13 +81,17 @@ async def startup() -> None:
 
 async def shutdown() -> None:
     """Cleanup on application shutdown."""
-    global github_client, polling_service
+    global github_client, discord_bot, polling_service
 
     logger.info("application.shutdown.started")
 
     # Stop polling service
     if polling_service:
         await polling_service.stop()
+
+    # Close Discord bot
+    if discord_bot:
+        await discord_bot.__aexit__(None, None, None)
 
     # Close GitHub client
     if github_client:
