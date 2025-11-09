@@ -1,0 +1,139 @@
+# ============================================================================
+# Activity Bot - .gitignore
+# ============================================================================
+
+# ------------------------------
+# macOS
+# ------------------------------
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+
+# ------------------------------
+# Claude Code / AI Agents
+# ------------------------------
+.agents/
+.claude/
+docs/
+
+# ------------------------------
+# Environment & Secrets
+# ------------------------------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ------------------------------
+# Python
+# ------------------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ruff
+.ruff_cache/
+
+# ------------------------------
+# Docker
+# ------------------------------
+*.log
+docker-compose.override.yml
+
+# ------------------------------
+# Project-Specific
+# ------------------------------
+# Runtime state files
+data/
+state.json
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# ------------------------------
+# IDEs & Editors
+# ------------------------------
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+PRD.md
+
+CLAUDE.md
