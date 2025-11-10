@@ -142,3 +142,47 @@ class StateManager:
         state["last_event_id"] = event_id
         self._write_state(state)
         logger.info("state.event_id.updated", event_id=event_id)
+
+
+async def get_last_event_id_async(db: Any) -> str | None:
+    """Get last processed event ID from database, fall back to JSON if None.
+
+    Args:
+        db: DatabaseClient instance
+
+    Returns:
+        Last processed event ID or None
+    """
+    from app.core.database import DatabaseClient
+
+    if not isinstance(db, DatabaseClient):
+        logger.warning("state.async.invalid_db_client")
+        return None
+
+    try:
+        event_id = await db.get_last_event_id()
+        logger.info("state.async.get_event_id", event_id=event_id, source="database")
+        return event_id
+    except Exception as e:
+        logger.error("state.async.get_failed", error=str(e), exc_info=True)
+        return None
+
+
+async def set_last_event_id_async(db: Any, event_id: str) -> None:
+    """Set last processed event ID in database.
+
+    Args:
+        db: DatabaseClient instance
+        event_id: Event ID to store
+    """
+    from app.core.database import DatabaseClient
+
+    if not isinstance(db, DatabaseClient):
+        logger.warning("state.async.invalid_db_client")
+        return
+
+    try:
+        await db.set_last_event_id(event_id)
+        logger.info("state.async.set_event_id", event_id=event_id)
+    except Exception as e:
+        logger.error("state.async.set_failed", error=str(e), exc_info=True)
