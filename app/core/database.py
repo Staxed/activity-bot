@@ -603,3 +603,42 @@ class DatabaseClient:
         except asyncpg.PostgresError as e:
             logger.error("database.mark_commits_posted.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to mark commits as posted: {e}") from e
+
+    async def get_unposted_commit_shas(self, shas: list[str]) -> set[str]:
+        """Get list of commit SHAs that haven't been posted to Discord yet.
+
+        Args:
+            shas: List of full commit SHAs to check
+
+        Returns:
+            Set of SHAs that have posted_to_discord = FALSE
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not shas:
+            return set()
+
+        query = """
+            SELECT sha
+            FROM commits
+            WHERE sha = ANY($1::text[])
+              AND posted_to_discord = FALSE
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, shas)
+                unposted_shas = {row["sha"] for row in rows}
+                logger.info(
+                    "database.get_unposted_shas.success",
+                    total=len(shas),
+                    unposted=len(unposted_shas),
+                )
+                return unposted_shas
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_shas.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted commit SHAs: {e}") from e
