@@ -259,16 +259,17 @@ class DatabaseClient:
                         pr.repo_name,
                         pr.is_public,
                         pr.url,
-                        pr.event_timestamp,
+                        _to_naive_utc(pr.event_timestamp),
                     )
                     for pr in prs
                 ]
-                result = await conn.executemany(query, data)
-                inserted = len([r for r in result if r != "INSERT 0 0"])
+                await conn.executemany(query, data)
+                # executemany returns None for INSERT statements
+                # We can't tell which were inserted vs skipped due to ON CONFLICT
                 logger.info(
-                    "database.insert_pull_requests.success", total=len(prs), inserted=inserted
+                    "database.insert_pull_requests.success", total=len(prs)
                 )
-                return inserted
+                return len(prs)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_pull_requests.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to insert pull requests: {e}") from e
@@ -303,16 +304,17 @@ class DatabaseClient:
                         r.repo_name,
                         r.is_public,
                         r.url,
-                        r.event_timestamp,
+                        _to_naive_utc(r.event_timestamp),
                     )
                     for r in reviews
                 ]
-                result = await conn.executemany(query, data)
-                inserted = len([r for r in result if r != "INSERT 0 0"])
+                await conn.executemany(query, data)
+                # executemany returns None for INSERT statements
+                # We can't tell which were inserted vs skipped due to ON CONFLICT
                 logger.info(
-                    "database.insert_pr_reviews.success", total=len(reviews), inserted=inserted
+                    "database.insert_pr_reviews.success", total=len(reviews)
                 )
-                return inserted
+                return len(reviews)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_pr_reviews.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to insert PR reviews: {e}") from e
@@ -348,14 +350,15 @@ class DatabaseClient:
                         i.repo_name,
                         i.is_public,
                         i.url,
-                        i.event_timestamp,
+                        _to_naive_utc(i.event_timestamp),
                     )
                     for i in issues
                 ]
-                result = await conn.executemany(query, data)
-                inserted = len([r for r in result if r != "INSERT 0 0"])
-                logger.info("database.insert_issues.success", total=len(issues), inserted=inserted)
-                return inserted
+                await conn.executemany(query, data)
+                # executemany returns None for INSERT statements
+                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                logger.info("database.insert_issues.success", total=len(issues))
+                return len(issues)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_issues.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to insert issues: {e}") from e
@@ -392,16 +395,17 @@ class DatabaseClient:
                         r.repo_name,
                         r.is_public,
                         r.url,
-                        r.event_timestamp,
+                        _to_naive_utc(r.event_timestamp),
                     )
                     for r in releases
                 ]
-                result = await conn.executemany(query, data)
-                inserted = len([r for r in result if r != "INSERT 0 0"])
+                await conn.executemany(query, data)
+                # executemany returns None for INSERT statements
+                # We can't tell which were inserted vs skipped due to ON CONFLICT
                 logger.info(
-                    "database.insert_releases.success", total=len(releases), inserted=inserted
+                    "database.insert_releases.success", total=len(releases)
                 )
-                return inserted
+                return len(releases)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_releases.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to insert releases: {e}") from e
@@ -434,16 +438,17 @@ class DatabaseClient:
                         c.repo_owner,
                         c.repo_name,
                         c.is_public,
-                        c.event_timestamp,
+                        _to_naive_utc(c.event_timestamp),
                     )
                     for c in creations
                 ]
-                result = await conn.executemany(query, data)
-                inserted = len([r for r in result if r != "INSERT 0 0"])
+                await conn.executemany(query, data)
+                # executemany returns None for INSERT statements
+                # We can't tell which were inserted vs skipped due to ON CONFLICT
                 logger.info(
-                    "database.insert_creations.success", total=len(creations), inserted=inserted
+                    "database.insert_creations.success", total=len(creations)
                 )
-                return inserted
+                return len(creations)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_creations.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to insert creations: {e}") from e
@@ -476,16 +481,17 @@ class DatabaseClient:
                         d.repo_owner,
                         d.repo_name,
                         d.is_public,
-                        d.event_timestamp,
+                        _to_naive_utc(d.event_timestamp),
                     )
                     for d in deletions
                 ]
-                result = await conn.executemany(query, data)
-                inserted = len([r for r in result if r != "INSERT 0 0"])
+                await conn.executemany(query, data)
+                # executemany returns None for INSERT statements
+                # We can't tell which were inserted vs skipped due to ON CONFLICT
                 logger.info(
-                    "database.insert_deletions.success", total=len(deletions), inserted=inserted
+                    "database.insert_deletions.success", total=len(deletions)
                 )
-                return inserted
+                return len(deletions)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_deletions.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to insert deletions: {e}") from e
@@ -520,14 +526,15 @@ class DatabaseClient:
                         f.fork_repo_name,
                         f.is_public,
                         f.fork_url,
-                        f.event_timestamp,
+                        _to_naive_utc(f.event_timestamp),
                     )
                     for f in forks
                 ]
-                result = await conn.executemany(query, data)
-                inserted = len([r for r in result if r != "INSERT 0 0"])
-                logger.info("database.insert_forks.success", total=len(forks), inserted=inserted)
-                return inserted
+                await conn.executemany(query, data)
+                # executemany returns None for INSERT statements
+                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                logger.info("database.insert_forks.success", total=len(forks))
+                return len(forks)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_forks.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to insert forks: {e}") from e
