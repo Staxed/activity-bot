@@ -171,7 +171,7 @@ def create_commit_embeds(author: str, repos: dict[str, list[CommitEvent]]) -> li
         quote = get_random_quote()
         embed = discord.Embed(
             description=f'*"{quote}"*',
-            color=0x28A745,  # GitHub green
+            color=0xFF8C00,  # Orange
             timestamp=all_commits[
                 0
             ].timestamp,  # Latest commit timestamp (first since sorted newest first)
