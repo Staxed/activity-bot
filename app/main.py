@@ -5,13 +5,14 @@ import signal
 import sys
 from typing import Any
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.database import DatabaseClient
 from app.core.logging import get_logger, setup_logging
 from app.core.state import StateManager
 from app.discord.bot import DiscordBot
 from app.discord.poster import DiscordPoster
 from app.discord.quotes import QuoteService, set_quote_service
+from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
 from app.github.polling import GitHubPollingService
 from app.shared.exceptions import ConfigError, GitHubAPIError
@@ -27,9 +28,82 @@ discord_poster: DiscordPoster | None = None
 polling_service: GitHubPollingService | None = None
 
 
+async def recover_unposted_commits(
+    db: DatabaseClient,
+    discord_poster: DiscordPoster,
+    settings: Settings,
+) -> None:
+    """Recover and post unposted commits from database on startup.
+
+    Args:
+        db: Database client
+        discord_poster: Discord poster for commit notifications
+        settings: Application settings
+
+    Note:
+        Only commits within 12-hour window and matching tracked branches are recovered.
+        Errors are logged but don't fail startup.
+    """
+    try:
+        logger.info("recovery.started", max_age_hours=12)
+
+        # Fetch unposted commits from database
+        unposted_commits = await db.get_unposted_commits(max_age_hours=12)
+
+        if not unposted_commits:
+            logger.info("recovery.no_commits")
+            return
+
+        # Filter by tracked branches
+        tracked_commits = []
+        for commit in unposted_commits:
+            if should_track_branch(
+                commit.branch,
+                settings.tracked_branches_list,
+                settings.ignore_branch_patterns_list,
+            ):
+                tracked_commits.append(commit)
+            else:
+                logger.debug(
+                    "recovery.commit.skipped",
+                    sha=commit.short_sha,
+                    branch=commit.branch,
+                    reason="branch_filtered",
+                )
+
+        if not tracked_commits:
+            logger.info("recovery.no_tracked_commits", total=len(unposted_commits))
+            return
+
+        logger.info(
+            "recovery.posting_commits",
+            total=len(tracked_commits),
+            filtered=len(unposted_commits) - len(tracked_commits),
+        )
+
+        # Post to Discord
+        await discord_poster.post_commits(tracked_commits)
+
+        # Mark as posted in database
+        event_ids = [f"commit_{c.sha}" for c in tracked_commits]
+        await db.mark_commits_posted(event_ids)
+
+        logger.info("recovery.completed", posted=len(tracked_commits))
+
+    except Exception as e:
+        # Log error but don't fail startup
+        logger.error("recovery.failed", error=str(e), exc_info=True)
+
+
 async def startup() -> None:
     """Initialize application on startup."""
-    global database_client, quote_service, github_client, discord_bot, discord_poster, polling_service
+    global \
+        database_client, \
+        quote_service, \
+        github_client, \
+        discord_bot, \
+        discord_poster, \
+        polling_service
 
     settings = get_settings()
 
@@ -83,12 +157,16 @@ async def startup() -> None:
     # Create Discord poster
     discord_poster = DiscordPoster(discord_bot)
 
+    # Recover unposted commits before starting polling
+    await recover_unposted_commits(database_client, discord_poster, settings)
+
     # Initialize and start polling service
     polling_service = GitHubPollingService(
         client=github_client,
         state=state,
         settings=settings,
         username=username,
+        db=database_client,
         discord_poster=discord_poster,
     )
     await polling_service.start()

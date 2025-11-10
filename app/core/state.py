@@ -1,12 +1,17 @@
 """State persistence using JSON file with atomic writes."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.shared.exceptions import StateError
+
+if TYPE_CHECKING:
+    from app.core.database import DatabaseClient
 
 logger = get_logger(__name__)
 
@@ -142,3 +147,35 @@ class StateManager:
         state["last_event_id"] = event_id
         self._write_state(state)
         logger.info("state.event_id.updated", event_id=event_id)
+
+
+async def get_last_event_id_async(db: "DatabaseClient") -> str | None:
+    """Get last processed event ID from database, fall back to JSON if None.
+
+    Args:
+        db: DatabaseClient instance
+
+    Returns:
+        Last processed event ID or None
+    """
+    try:
+        event_id = await db.get_last_event_id()
+        logger.info("state.async.get_event_id", event_id=event_id, source="database")
+        return event_id
+    except Exception as e:
+        logger.error("state.async.get_failed", error=str(e), exc_info=True)
+        return None
+
+
+async def set_last_event_id_async(db: "DatabaseClient", event_id: str) -> None:
+    """Set last processed event ID in database.
+
+    Args:
+        db: DatabaseClient instance
+        event_id: Event ID to store
+    """
+    try:
+        await db.set_last_event_id(event_id)
+        logger.info("state.async.set_event_id", event_id=event_id)
+    except Exception as e:
+        logger.error("state.async.set_failed", error=str(e), exc_info=True)

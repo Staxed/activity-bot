@@ -4,11 +4,23 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import Settings
+from app.core.database import DatabaseClient
 from app.core.logging import get_logger
-from app.core.state import StateManager
+from app.core.state import StateManager, get_last_event_id_async, set_last_event_id_async
 from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
-from app.github.events import filter_push_events, parse_commits_from_events
+from app.github.events import (
+    filter_events_by_type,
+    filter_push_events,
+    parse_commits_from_events,
+    parse_creations_from_events,
+    parse_deletions_from_events,
+    parse_forks_from_events,
+    parse_issues_from_events,
+    parse_pr_reviews_from_events,
+    parse_pull_requests_from_events,
+    parse_releases_from_events,
+)
 from app.shared.exceptions import GitHubPollingError
 
 if TYPE_CHECKING:
@@ -37,6 +49,7 @@ class GitHubPollingService:
         state: StateManager,
         settings: Settings,
         username: str,
+        db: DatabaseClient,
         discord_poster: "DiscordPoster | None" = None,
     ) -> None:
         """Initialize polling service with dependencies.
@@ -46,12 +59,14 @@ class GitHubPollingService:
             state: State manager for persistence
             settings: Application settings
             username: GitHub username to poll events for
+            db: Database client for event storage
             discord_poster: Optional Discord poster for commit notifications
         """
         self.client = client
         self.state = state
         self.settings = settings
         self.username = username
+        self.db = db
         self.discord_poster = discord_poster
         self.consecutive_failures = 0
         self.running = False
@@ -114,21 +129,22 @@ class GitHubPollingService:
         return collected_events
 
     async def poll_once(self) -> int:
-        """Poll GitHub events once and process new commits.
+        """Poll GitHub events once and store all events in database.
 
         Returns:
-            Number of commits processed
+            Number of commits processed and posted to Discord
 
         Raises:
             GitHubPollingError: If consecutive failures exceed threshold
 
         Note:
             - First run: Stores newest event ID without processing
-            - Subsequent runs: Processes only new events
+            - Subsequent runs: Stores ALL 8 event types, posts commits only
             - Success resets consecutive_failures counter
         """
         try:
-            last_event_id = self.state.get_last_event_id()
+            # Get last event ID from database
+            last_event_id = await get_last_event_id_async(self.db)
 
             logger.info(
                 "github.poll.started",
@@ -143,14 +159,14 @@ class GitHubPollingService:
             if last_event_id is None:
                 if events:
                     newest_id = events[0]["id"]
-                    self.state.set_last_event_id(newest_id)
+                    await set_last_event_id_async(self.db, newest_id)
                     logger.info("github.poll.first_run", event_id=newest_id)
                 else:
                     # No events at all, fetch first page to get latest ID
                     first_page = await self.client.fetch_user_events(self.username, page=1)
                     if first_page:
                         newest_id = first_page[0]["id"]
-                        self.state.set_last_event_id(newest_id)
+                        await set_last_event_id_async(self.db, newest_id)
                         logger.info("github.poll.first_run", event_id=newest_id)
                     else:
                         logger.info("github.poll.first_run.no_events")
@@ -164,14 +180,56 @@ class GitHubPollingService:
                 self.consecutive_failures = 0
                 return 0
 
-            # Filter and parse PushEvents
-            push_events = filter_push_events(events)
-            commits = await parse_commits_from_events(push_events, self.client)
+            # Filter events by type
+            categorized = filter_events_by_type(events)
 
-            # Reverse to process oldest first (chronological order)
+            # Parse all event types in parallel
+            commits_task = parse_commits_from_events(categorized["PushEvent"], self.client)
+            prs_task = parse_pull_requests_from_events(categorized["PullRequestEvent"])
+            pr_reviews_task = parse_pr_reviews_from_events(categorized["PullRequestReviewEvent"])
+            issues_task = parse_issues_from_events(categorized["IssuesEvent"])
+            releases_task = parse_releases_from_events(categorized["ReleaseEvent"])
+            creations_task = parse_creations_from_events(categorized["CreateEvent"])
+            deletions_task = parse_deletions_from_events(categorized["DeleteEvent"])
+            forks_task = parse_forks_from_events(categorized["ForkEvent"])
+
+            # Await all parsing in parallel
+            (
+                commits,
+                prs,
+                pr_reviews,
+                issues,
+                releases,
+                creations,
+                deletions,
+                forks,
+            ) = await asyncio.gather(
+                commits_task,
+                prs_task,
+                pr_reviews_task,
+                issues_task,
+                releases_task,
+                creations_task,
+                deletions_task,
+                forks_task,
+            )
+
+            # Bulk insert all events to database in parallel
+            await asyncio.gather(
+                self.db.insert_commits(commits),
+                self.db.insert_pull_requests(prs),
+                self.db.insert_pr_reviews(pr_reviews),
+                self.db.insert_issues(issues),
+                self.db.insert_releases(releases),
+                self.db.insert_creations(creations),
+                self.db.insert_deletions(deletions),
+                self.db.insert_forks(forks),
+            )
+
+            # Reverse commits to process oldest first (chronological order)
             commits.reverse()
 
-            # Filter commits by branch and collect tracked commits
+            # Filter commits by branch and collect tracked commits for Discord posting
             tracked_commits = []
             for commit in commits:
                 # Check if this branch should be tracked
@@ -202,22 +260,43 @@ class GitHubPollingService:
                 )
                 tracked_commits.append(commit)
 
-            # Post tracked commits to Discord
+            # Post tracked commits to Discord (only if not already posted)
             if self.discord_poster and tracked_commits:
                 try:
-                    await self.discord_poster.post_commits(tracked_commits)
+                    # Get list of commits that haven't been posted yet
+                    commit_shas = [c.sha for c in tracked_commits]
+                    unposted_shas = await self.db.get_unposted_commit_shas(commit_shas)
+
+                    # Filter to only unposted commits
+                    unposted_commits = [c for c in tracked_commits if c.sha in unposted_shas]
+
+                    if unposted_commits:
+                        await self.discord_poster.post_commits(unposted_commits)
+
+                        # Mark posted commits in database
+                        event_ids = [f"commit_{c.sha}" for c in unposted_commits]
+                        await self.db.mark_commits_posted(event_ids)
+                    else:
+                        logger.info("discord.post.skipped", reason="all_already_posted")
                 except Exception as e:
                     logger.error("discord.post.error", error=str(e), exc_info=True)
 
-            # Update state with newest event ID
+            # Update state with newest event ID in database
             newest_event_id = events[0]["id"]
-            self.state.set_last_event_id(newest_event_id)
+            await set_last_event_id_async(self.db, newest_event_id)
 
             logger.info(
                 "github.poll.complete",
                 commits_total=len(commits),
                 commits_tracked=len(tracked_commits),
                 commits_filtered=len(commits) - len(tracked_commits),
+                prs_total=len(prs),
+                pr_reviews_total=len(pr_reviews),
+                issues_total=len(issues),
+                releases_total=len(releases),
+                creations_total=len(creations),
+                deletions_total=len(deletions),
+                forks_total=len(forks),
                 newest_event_id=newest_event_id,
             )
 
