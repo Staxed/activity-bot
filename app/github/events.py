@@ -157,9 +157,7 @@ def filter_events_by_type(events: list[dict[str, Any]]) -> dict[str, list[dict[s
     return categorized
 
 
-async def parse_pull_requests_from_events(
-    events: list[dict[str, Any]]
-) -> list[PullRequestEvent]:
+async def parse_pull_requests_from_events(events: list[dict[str, Any]]) -> list[PullRequestEvent]:
     """Parse PullRequestEvent list into PullRequestEvent models.
 
     Args:
@@ -184,7 +182,7 @@ async def parse_pull_requests_from_events(
 
 
 async def parse_pr_reviews_from_events(
-    events: list[dict[str, Any]]
+    events: list[dict[str, Any]],
 ) -> list[PullRequestReviewEvent]:
     """Parse PullRequestReviewEvent list into models."""
     reviews: list[PullRequestReviewEvent] = []
@@ -219,9 +217,7 @@ async def parse_issues_from_events(events: list[dict[str, Any]]) -> list[IssuesE
     return issues
 
 
-async def parse_releases_from_events(
-    events: list[dict[str, Any]]
-) -> list[ReleaseEvent]:
+async def parse_releases_from_events(events: list[dict[str, Any]]) -> list[ReleaseEvent]:
     """Parse ReleaseEvent list into ReleaseEvent models."""
     releases: list[ReleaseEvent] = []
 
@@ -238,9 +234,7 @@ async def parse_releases_from_events(
     return releases
 
 
-async def parse_creations_from_events(
-    events: list[dict[str, Any]]
-) -> list[CreateEvent]:
+async def parse_creations_from_events(events: list[dict[str, Any]]) -> list[CreateEvent]:
     """Parse CreateEvent list into CreateEvent models."""
     creations: list[CreateEvent] = []
 
@@ -257,9 +251,7 @@ async def parse_creations_from_events(
     return creations
 
 
-async def parse_deletions_from_events(
-    events: list[dict[str, Any]]
-) -> list[DeleteEvent]:
+async def parse_deletions_from_events(events: list[dict[str, Any]]) -> list[DeleteEvent]:
     """Parse DeleteEvent list into DeleteEvent models."""
     deletions: list[DeleteEvent] = []
 

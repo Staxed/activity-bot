@@ -1,12 +1,17 @@
 """State persistence using JSON file with atomic writes."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.shared.exceptions import StateError
+
+if TYPE_CHECKING:
+    from app.core.database import DatabaseClient
 
 logger = get_logger(__name__)
 
@@ -144,7 +149,7 @@ class StateManager:
         logger.info("state.event_id.updated", event_id=event_id)
 
 
-async def get_last_event_id_async(db: Any) -> str | None:
+async def get_last_event_id_async(db: "DatabaseClient") -> str | None:
     """Get last processed event ID from database, fall back to JSON if None.
 
     Args:
@@ -153,12 +158,6 @@ async def get_last_event_id_async(db: Any) -> str | None:
     Returns:
         Last processed event ID or None
     """
-    from app.core.database import DatabaseClient
-
-    if not isinstance(db, DatabaseClient):
-        logger.warning("state.async.invalid_db_client")
-        return None
-
     try:
         event_id = await db.get_last_event_id()
         logger.info("state.async.get_event_id", event_id=event_id, source="database")
@@ -168,19 +167,13 @@ async def get_last_event_id_async(db: Any) -> str | None:
         return None
 
 
-async def set_last_event_id_async(db: Any, event_id: str) -> None:
+async def set_last_event_id_async(db: "DatabaseClient", event_id: str) -> None:
     """Set last processed event ID in database.
 
     Args:
         db: DatabaseClient instance
         event_id: Event ID to store
     """
-    from app.core.database import DatabaseClient
-
-    if not isinstance(db, DatabaseClient):
-        logger.warning("state.async.invalid_db_client")
-        return
-
     try:
         await db.set_last_event_id(event_id)
         logger.info("state.async.set_event_id", event_id=event_id)

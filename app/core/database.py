@@ -265,7 +265,9 @@ class DatabaseClient:
                 ]
                 result = await conn.executemany(query, data)
                 inserted = len([r for r in result if r != "INSERT 0 0"])
-                logger.info("database.insert_pull_requests.success", total=len(prs), inserted=inserted)
+                logger.info(
+                    "database.insert_pull_requests.success", total=len(prs), inserted=inserted
+                )
                 return inserted
         except asyncpg.PostgresError as e:
             logger.error("database.insert_pull_requests.failed", error=str(e), exc_info=True)
@@ -307,7 +309,9 @@ class DatabaseClient:
                 ]
                 result = await conn.executemany(query, data)
                 inserted = len([r for r in result if r != "INSERT 0 0"])
-                logger.info("database.insert_pr_reviews.success", total=len(reviews), inserted=inserted)
+                logger.info(
+                    "database.insert_pr_reviews.success", total=len(reviews), inserted=inserted
+                )
                 return inserted
         except asyncpg.PostgresError as e:
             logger.error("database.insert_pr_reviews.failed", error=str(e), exc_info=True)
@@ -394,7 +398,9 @@ class DatabaseClient:
                 ]
                 result = await conn.executemany(query, data)
                 inserted = len([r for r in result if r != "INSERT 0 0"])
-                logger.info("database.insert_releases.success", total=len(releases), inserted=inserted)
+                logger.info(
+                    "database.insert_releases.success", total=len(releases), inserted=inserted
+                )
                 return inserted
         except asyncpg.PostgresError as e:
             logger.error("database.insert_releases.failed", error=str(e), exc_info=True)
@@ -434,7 +440,9 @@ class DatabaseClient:
                 ]
                 result = await conn.executemany(query, data)
                 inserted = len([r for r in result if r != "INSERT 0 0"])
-                logger.info("database.insert_creations.success", total=len(creations), inserted=inserted)
+                logger.info(
+                    "database.insert_creations.success", total=len(creations), inserted=inserted
+                )
                 return inserted
         except asyncpg.PostgresError as e:
             logger.error("database.insert_creations.failed", error=str(e), exc_info=True)
@@ -474,7 +482,9 @@ class DatabaseClient:
                 ]
                 result = await conn.executemany(query, data)
                 inserted = len([r for r in result if r != "INSERT 0 0"])
-                logger.info("database.insert_deletions.success", total=len(deletions), inserted=inserted)
+                logger.info(
+                    "database.insert_deletions.success", total=len(deletions), inserted=inserted
+                )
                 return inserted
         except asyncpg.PostgresError as e:
             logger.error("database.insert_deletions.failed", error=str(e), exc_info=True)
