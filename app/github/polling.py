@@ -103,7 +103,24 @@ class GitHubPollingService:
 
             # Collect events newer than last_event_id
             for event in events:
-                event_id_int = int(event["id"])
+                event_id = event.get("id")
+                if not event_id:
+                    logger.warning(
+                        "github.poll.event_missing_id",
+                        page=page,
+                        event_type=event.get("type", "Unknown"),
+                    )
+                    continue
+                
+                try:
+                    event_id_int = int(event_id)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "github.poll.invalid_event_id",
+                        event_id=event_id,
+                        page=page,
+                    )
+                    continue
 
                 if event_id_int > last_event_id_int:
                     collected_events.append(event)
@@ -179,6 +196,14 @@ class GitHubPollingService:
                 logger.info("github.poll.no_new_events")
                 self.consecutive_failures = 0
                 return 0
+
+            # Log event types received for debugging
+            event_types = [e.get("type", "Unknown") for e in events]
+            logger.info(
+                "github.poll.event_types",
+                total=len(events),
+                types=event_types,
+            )
 
             # Filter events by type
             categorized = filter_events_by_type(events)
@@ -298,6 +323,19 @@ class GitHubPollingService:
                 deletions_total=len(deletions),
                 forks_total=len(forks),
                 newest_event_id=newest_event_id,
+            )
+            
+            # Log categorized counts for debugging
+            logger.debug(
+                "github.poll.categorized",
+                push_events=len(categorized["PushEvent"]),
+                pr_events=len(categorized["PullRequestEvent"]),
+                pr_review_events=len(categorized["PullRequestReviewEvent"]),
+                issue_events=len(categorized["IssuesEvent"]),
+                release_events=len(categorized["ReleaseEvent"]),
+                create_events=len(categorized["CreateEvent"]),
+                delete_events=len(categorized["DeleteEvent"]),
+                fork_events=len(categorized["ForkEvent"]),
             )
 
             # Reset failure counter on success

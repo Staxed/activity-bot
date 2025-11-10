@@ -149,10 +149,21 @@ def filter_events_by_type(events: list[dict[str, Any]]) -> dict[str, list[dict[s
         "ForkEvent": [],
     }
 
+    tracked_types = set(categorized.keys())
+
     for event in events:
         event_type = event.get("type", "")
+        event_id = event.get("id", "unknown")
+        
         if event_type in categorized:
             categorized[event_type].append(event)
+        elif event_type:
+            # Log unknown event types for debugging
+            logger.debug(
+                "github.event.unknown_type",
+                event_id=event_id,
+                event_type=event_type,
+            )
 
     return categorized
 
@@ -170,12 +181,38 @@ async def parse_pull_requests_from_events(events: list[dict[str, Any]]) -> list[
 
     for event in events:
         try:
+            # Validate event structure before parsing
+            if not event.get("payload"):
+                logger.warning(
+                    "github.event.parse_pr_failed",
+                    event_id=event.get("id"),
+                    error="Missing payload",
+                )
+                continue
+            
+            payload = event.get("payload", {})
+            if not payload.get("pull_request"):
+                logger.warning(
+                    "github.event.parse_pr_failed",
+                    event_id=event.get("id"),
+                    error="Missing pull_request in payload",
+                )
+                continue
+                
             prs.append(PullRequestEvent.from_github_event(event))
+        except KeyError as e:
+            logger.warning(
+                "github.event.parse_pr_failed",
+                event_id=event.get("id"),
+                error=f"Missing required field: {e}",
+                exc_info=True,
+            )
         except Exception as e:
             logger.warning(
                 "github.event.parse_pr_failed",
                 event_id=event.get("id"),
                 error=str(e),
+                exc_info=True,
             )
 
     return prs
