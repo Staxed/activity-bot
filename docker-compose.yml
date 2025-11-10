@@ -53,6 +53,24 @@ services:
       - bot-network
     restart: unless-stopped
 
+  adminer:
+    image: adminer:latest
+    container_name: activity-bot-adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "8888:8080"
+    depends_on:
+      - postgres
+    networks:
+      - bot-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
 networks:
   bot-network:
     driver: bridge
