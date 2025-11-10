@@ -3,7 +3,16 @@
 from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
-from app.shared.models import CommitEvent
+from app.shared.models import (
+    CommitEvent,
+    CreateEvent,
+    DeleteEvent,
+    ForkEvent,
+    IssuesEvent,
+    PullRequestEvent,
+    PullRequestReviewEvent,
+    ReleaseEvent,
+)
 
 if TYPE_CHECKING:
     from app.github.client import GitHubClient
@@ -110,3 +119,175 @@ async def parse_commits_from_events(
                 )
 
     return commits
+
+
+def filter_events_by_type(events: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Filter events into categories by type.
+
+    Args:
+        events: List of GitHub event dictionaries
+
+    Returns:
+        Dictionary mapping event type to list of events
+        Keys: PushEvent, PullRequestEvent, PullRequestReviewEvent, IssuesEvent,
+              ReleaseEvent, CreateEvent, DeleteEvent, ForkEvent
+
+    Example:
+        >>> events = [{"type": "PushEvent"}, {"type": "IssuesEvent"}]
+        >>> categorized = filter_events_by_type(events)
+        >>> categorized["PushEvent"]
+        [{"type": "PushEvent"}]
+    """
+    categorized: dict[str, list[dict[str, Any]]] = {
+        "PushEvent": [],
+        "PullRequestEvent": [],
+        "PullRequestReviewEvent": [],
+        "IssuesEvent": [],
+        "ReleaseEvent": [],
+        "CreateEvent": [],
+        "DeleteEvent": [],
+        "ForkEvent": [],
+    }
+
+    for event in events:
+        event_type = event.get("type", "")
+        if event_type in categorized:
+            categorized[event_type].append(event)
+
+    return categorized
+
+
+async def parse_pull_requests_from_events(
+    events: list[dict[str, Any]]
+) -> list[PullRequestEvent]:
+    """Parse PullRequestEvent list into PullRequestEvent models.
+
+    Args:
+        events: List of PullRequestEvent dictionaries
+
+    Returns:
+        List of parsed PullRequestEvent objects
+    """
+    prs: list[PullRequestEvent] = []
+
+    for event in events:
+        try:
+            prs.append(PullRequestEvent.from_github_event(event))
+        except Exception as e:
+            logger.warning(
+                "github.event.parse_pr_failed",
+                event_id=event.get("id"),
+                error=str(e),
+            )
+
+    return prs
+
+
+async def parse_pr_reviews_from_events(
+    events: list[dict[str, Any]]
+) -> list[PullRequestReviewEvent]:
+    """Parse PullRequestReviewEvent list into models."""
+    reviews: list[PullRequestReviewEvent] = []
+
+    for event in events:
+        try:
+            reviews.append(PullRequestReviewEvent.from_github_event(event))
+        except Exception as e:
+            logger.warning(
+                "github.event.parse_pr_review_failed",
+                event_id=event.get("id"),
+                error=str(e),
+            )
+
+    return reviews
+
+
+async def parse_issues_from_events(events: list[dict[str, Any]]) -> list[IssuesEvent]:
+    """Parse IssuesEvent list into IssuesEvent models."""
+    issues: list[IssuesEvent] = []
+
+    for event in events:
+        try:
+            issues.append(IssuesEvent.from_github_event(event))
+        except Exception as e:
+            logger.warning(
+                "github.event.parse_issue_failed",
+                event_id=event.get("id"),
+                error=str(e),
+            )
+
+    return issues
+
+
+async def parse_releases_from_events(
+    events: list[dict[str, Any]]
+) -> list[ReleaseEvent]:
+    """Parse ReleaseEvent list into ReleaseEvent models."""
+    releases: list[ReleaseEvent] = []
+
+    for event in events:
+        try:
+            releases.append(ReleaseEvent.from_github_event(event))
+        except Exception as e:
+            logger.warning(
+                "github.event.parse_release_failed",
+                event_id=event.get("id"),
+                error=str(e),
+            )
+
+    return releases
+
+
+async def parse_creations_from_events(
+    events: list[dict[str, Any]]
+) -> list[CreateEvent]:
+    """Parse CreateEvent list into CreateEvent models."""
+    creations: list[CreateEvent] = []
+
+    for event in events:
+        try:
+            creations.append(CreateEvent.from_github_event(event))
+        except Exception as e:
+            logger.warning(
+                "github.event.parse_creation_failed",
+                event_id=event.get("id"),
+                error=str(e),
+            )
+
+    return creations
+
+
+async def parse_deletions_from_events(
+    events: list[dict[str, Any]]
+) -> list[DeleteEvent]:
+    """Parse DeleteEvent list into DeleteEvent models."""
+    deletions: list[DeleteEvent] = []
+
+    for event in events:
+        try:
+            deletions.append(DeleteEvent.from_github_event(event))
+        except Exception as e:
+            logger.warning(
+                "github.event.parse_deletion_failed",
+                event_id=event.get("id"),
+                error=str(e),
+            )
+
+    return deletions
+
+
+async def parse_forks_from_events(events: list[dict[str, Any]]) -> list[ForkEvent]:
+    """Parse ForkEvent list into ForkEvent models."""
+    forks: list[ForkEvent] = []
+
+    for event in events:
+        try:
+            forks.append(ForkEvent.from_github_event(event))
+        except Exception as e:
+            logger.warning(
+                "github.event.parse_fork_failed",
+                event_id=event.get("id"),
+                error=str(e),
+            )
+
+    return forks
