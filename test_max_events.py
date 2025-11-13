@@ -2,7 +2,6 @@
 """Test script to generate fakeevents and post to Discord."""
 
 import asyncio
-import os
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
@@ -39,7 +38,7 @@ quotes_module._quote_service = _mock_service
 quotes_module.get_random_quote = lambda: _mock_service.get_random_quote()
 
 
-def create_fake_commits(count: int = 15) -> list[CommitEvent]:
+def create_fake_commits(count: int = 20) -> list[CommitEvent]:
     """Generate fake commit events."""
     commits = []
     base_time = datetime.now(UTC)
@@ -54,10 +53,10 @@ def create_fake_commits(count: int = 15) -> list[CommitEvent]:
                 short_sha=sha[:7],
                 author="Staxed",
                 author_email="staxed@example.com",
-                author_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                author_avatar_url="https://github.com/Staxed.png",
                 author_username="Staxed",
-                message=f"feat: add awesome feature #{i+1}",
-                message_body=f"feat: add awesome feature #{i+1}\n\nThis is a detailed description of the feature.",
+                message=f"feat: implement comprehensive feature enhancement for module #{i+1} with extensive testing coverage",
+                message_body=f"feat: implement comprehensive feature enhancement for module #{i+1} with extensive testing coverage\n\nThis is a detailed description of the feature implementation.",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 branch="main",
@@ -70,7 +69,7 @@ def create_fake_commits(count: int = 15) -> list[CommitEvent]:
     return commits
 
 
-def create_fake_prs(count: int = 15) -> list[PullRequestEvent]:
+def create_fake_prs(count: int = 2) -> list[PullRequestEvent]:
     """Generate fake pull request events."""
     prs = []
     base_time = datetime.now(UTC)
@@ -92,7 +91,7 @@ def create_fake_prs(count: int = 15) -> list[PullRequestEvent]:
                 state=state,
                 merged=is_merged,
                 author_username="Staxed",
-                author_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                author_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
@@ -104,7 +103,7 @@ def create_fake_prs(count: int = 15) -> list[PullRequestEvent]:
     return prs
 
 
-def create_fake_issues(count: int = 15) -> list[IssuesEvent]:
+def create_fake_issues(count: int = 2) -> list[IssuesEvent]:
     """Generate fake issue events."""
     issues = []
     base_time = datetime.now(UTC)
@@ -124,7 +123,7 @@ def create_fake_issues(count: int = 15) -> list[IssuesEvent]:
                 title=f"Bug: Fix issue #{i+1}",
                 state=state,
                 author_username="Staxed",
-                author_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                author_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
@@ -136,7 +135,7 @@ def create_fake_issues(count: int = 15) -> list[IssuesEvent]:
     return issues
 
 
-def create_fake_releases(count: int = 15) -> list[ReleaseEvent]:
+def create_fake_releases(count: int = 2) -> list[ReleaseEvent]:
     """Generate fake release events."""
     releases = []
     base_time = datetime.now(UTC)
@@ -150,7 +149,7 @@ def create_fake_releases(count: int = 15) -> list[ReleaseEvent]:
                 tag_name=f"v1.{i}.0",
                 release_name=f"Release v1.{i}.0 - Test Release",
                 author_username="Staxed",
-                author_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                author_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
@@ -162,7 +161,7 @@ def create_fake_releases(count: int = 15) -> list[ReleaseEvent]:
     return releases
 
 
-def create_fake_reviews(count: int = 15) -> list[PullRequestReviewEvent]:
+def create_fake_reviews(count: int = 2) -> list[PullRequestReviewEvent]:
     """Generate fake PR review events."""
     reviews = []
     base_time = datetime.now(UTC)
@@ -180,7 +179,7 @@ def create_fake_reviews(count: int = 15) -> list[PullRequestReviewEvent]:
                 pr_title=f"PR for review #{i+1}",
                 review_state=state,
                 reviewer_username="Staxed",
-                reviewer_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                reviewer_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
@@ -192,7 +191,7 @@ def create_fake_reviews(count: int = 15) -> list[PullRequestReviewEvent]:
     return reviews
 
 
-def create_fake_creations(count: int = 15) -> list[CreateEvent]:
+def create_fake_creations(count: int = 2) -> list[CreateEvent]:
     """Generate fake creation events."""
     creations = []
     base_time = datetime.now(UTC)
@@ -210,7 +209,7 @@ def create_fake_creations(count: int = 15) -> list[CreateEvent]:
                 ref_type=ref_type,
                 ref_name=ref_name,
                 author_username="Staxed",
-                author_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                author_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name=f"test-repo-{i}" if ref_type == "repository" else "test-repo",
                 is_public=is_public,
@@ -221,7 +220,7 @@ def create_fake_creations(count: int = 15) -> list[CreateEvent]:
     return creations
 
 
-def create_fake_deletions(count: int = 15) -> list[DeleteEvent]:
+def create_fake_deletions(count: int = 2) -> list[DeleteEvent]:
     """Generate fake deletion events."""
     deletions = []
     base_time = datetime.now(UTC)
@@ -239,7 +238,7 @@ def create_fake_deletions(count: int = 15) -> list[DeleteEvent]:
                 ref_type=ref_type,
                 ref_name=ref_name,
                 author_username="Staxed",
-                author_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                author_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
@@ -250,7 +249,7 @@ def create_fake_deletions(count: int = 15) -> list[DeleteEvent]:
     return deletions
 
 
-def create_fake_forks(count: int = 15) -> list[ForkEvent]:
+def create_fake_forks(count: int = 2) -> list[ForkEvent]:
     """Generate fake fork events."""
     forks = []
     base_time = datetime.now(UTC)
@@ -262,7 +261,7 @@ def create_fake_forks(count: int = 15) -> list[ForkEvent]:
             ForkEvent(
                 event_id=f"fake_fork_{i}",
                 forker_username="Staxed",
-                forker_avatar_url="https://avatars.githubusercontent.com/u/12345678",
+                forker_avatar_url="https://github.com/Staxed.png",
                 source_repo_owner=f"upstream-org-{i}",
                 source_repo_name="awesome-repo",
                 fork_repo_owner="Staxed",
@@ -280,16 +279,15 @@ async def main() -> None:
     """Generate and post fake events to Discord."""
     print("🚀 Generating fake events...")
 
-    # Generate 3 of each event type (24 total)
-    # First one of each type will be private
-    commits = create_fake_commits(3)
-    prs = create_fake_prs(3)
-    issues = create_fake_issues(3)
-    releases = create_fake_releases(3)
-    reviews = create_fake_reviews(3)
-    creations = create_fake_creations(3)
-    deletions = create_fake_deletions(3)
-    forks = create_fake_forks(3)
+    # Generate events (first one of each type will be private)
+    commits = create_fake_commits(20)  # 20 commits to test "and X more"
+    prs = create_fake_prs(2)
+    issues = create_fake_issues(2)
+    releases = create_fake_releases(2)
+    reviews = create_fake_reviews(2)
+    creations = create_fake_creations(2)
+    deletions = create_fake_deletions(2)
+    forks = create_fake_forks(2)
 
     print(f"✅ Generated {len(commits)} commits")
     print(f"✅ Generated {len(prs)} pull requests")
@@ -357,7 +355,7 @@ async def main() -> None:
 
         test_embeds.append(create_summary_embed(
             username="Staxed",
-            avatar_url="https://avatars.githubusercontent.com/u/12345678",
+            avatar_url="https://github.com/Staxed.png",
             event_counts=event_counts,
             affected_repos=affected_repos,
             timestamp=datetime.now(UTC)

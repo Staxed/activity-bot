@@ -1,5 +1,6 @@
 """Discord summary embed creation for multi-event activity."""
 
+import re
 from datetime import datetime
 
 import discord
@@ -48,16 +49,27 @@ def create_summary_embed(
         "forks": "🍴",
     }
 
-    # Create embed with random quote as description
+    # Get quote and format it (remove leading emoji, add quotes and italics)
+    raw_quote = get_random_quote()
+    # Remove any leading emoji (Unicode emoji pattern)
+    cleaned_quote = re.sub(r'^[\U0001F300-\U0001F9FF\s]+', '', raw_quote).strip()
+    formatted_quote = f'*"{cleaned_quote}"*'
+
+    # Create embed with title as clickable link and formatted quote as description
     embed = discord.Embed(
-        title=f"GitHub Activity Summary - {username}",
-        description=get_random_quote(),
+        title=f"{username} on Github",
+        url=f"https://github.com/{username}",
+        description=formatted_quote,
         color=SUMMARY_COLOR,
         timestamp=timestamp,
     )
 
-    # Set author with GitHub profile link and avatar
-    embed.set_author(name=username, url=f"https://github.com/{username}", icon_url=avatar_url)
+    # Set user avatar as thumbnail
+    embed.set_thumbnail(url=avatar_url)
+
+    # Add spacing to push fields below avatar thumbnail
+    # The description gets extra newlines to create vertical space
+    embed.description = embed.description + "\n\n\u200b"  # Zero-width space for extra padding
 
     # Build activity summary field (skip zero counts)
     activity_lines = []
@@ -72,6 +84,13 @@ def create_summary_embed(
             value="\n".join(activity_lines),
             inline=True,
         )
+
+    # Add spacing field between columns
+    embed.add_field(
+        name="\u200b",  # Zero-width space for invisible field name
+        value="\u200b",  # Zero-width space for invisible field value
+        inline=True,
+    )
 
     # Build affected repositories field
     if affected_repos:
