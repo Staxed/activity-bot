@@ -58,22 +58,23 @@ def create_commits_embed(commits: list[CommitEvent]) -> discord.Embed | None:
     if not commits:
         return None
 
-    # Sort by timestamp, newest first
-    sorted_commits = sorted(commits, key=lambda c: c.timestamp, reverse=True)
+    # Sort by public repos first, then by timestamp (newest first)
+    sorted_commits = sorted(commits, key=lambda c: (c.is_public, c.timestamp), reverse=True)
 
     # Create embed
     embed = discord.Embed(
         title="📝 Commits",
         color=COMMIT_COLOR,
-        timestamp=sorted_commits[0].timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for commit in sorted_commits:
+    for i, commit in enumerate(sorted_commits):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line based on repository visibility
         unix_timestamp = int(commit.timestamp.timestamp())
         repo_full_name = f"{commit.repo_owner}/{commit.repo_name}"
@@ -84,18 +85,13 @@ def create_commits_embed(commits: list[CommitEvent]) -> discord.Embed | None:
         else:
             line = f"• {truncated_msg} (`{commit.branch}`) in {repo_full_name} [Private Repo] - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_commits) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more commit(s)")
 

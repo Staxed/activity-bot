@@ -138,31 +138,36 @@ class DiscordPoster:
                 )
                 embeds.append(summary)
 
-                # Add event type embeds (if enabled)
-                if settings.post_commits:
-                    commit_embed = create_commits_embed(events.commits)
-                    if commit_embed:
-                        embeds.append(commit_embed)
+                # Add event type embeds (if enabled) - ordered by priority
+                if settings.post_releases:
+                    release_embed = create_releases_embed(events.releases)
+                    if release_embed:
+                        embeds.append(release_embed)
 
                 if settings.post_pull_requests:
                     pr_embed = create_prs_embed(events.pull_requests)
                     if pr_embed:
                         embeds.append(pr_embed)
 
-                if settings.post_issues:
-                    issue_embed = create_issues_embed(events.issues)
-                    if issue_embed:
-                        embeds.append(issue_embed)
-
-                if settings.post_releases:
-                    release_embed = create_releases_embed(events.releases)
-                    if release_embed:
-                        embeds.append(release_embed)
+                if settings.post_commits:
+                    commit_embed = create_commits_embed(events.commits)
+                    if commit_embed:
+                        embeds.append(commit_embed)
 
                 if settings.post_reviews:
                     review_embed = create_reviews_embed(events.reviews)
                     if review_embed:
                         embeds.append(review_embed)
+
+                if settings.post_issues:
+                    issue_embed = create_issues_embed(events.issues)
+                    if issue_embed:
+                        embeds.append(issue_embed)
+
+                if settings.post_forks:
+                    fork_embed = create_forks_embed(events.forks)
+                    if fork_embed:
+                        embeds.append(fork_embed)
 
                 if settings.post_creations:
                     creation_embed = create_creations_embed(events.creations)
@@ -173,11 +178,6 @@ class DiscordPoster:
                     deletion_embed = create_deletions_embed(events.deletions)
                     if deletion_embed:
                         embeds.append(deletion_embed)
-
-                if settings.post_forks:
-                    fork_embed = create_forks_embed(events.forks)
-                    if fork_embed:
-                        embeds.append(fork_embed)
 
                 # Enforce 10-embed limit
                 if len(embeds) > 10:
@@ -261,7 +261,9 @@ class DiscordPoster:
             repo_key = f"{fork.source_repo_owner}/{fork.source_repo_name}"
             repos[repo_key] = fork.is_public
 
-        return list(repos.items())
+        # Sort: public repos first, then private repos (alphabetically within each group)
+        sorted_repos = sorted(repos.items(), key=lambda x: (not x[1], x[0]))
+        return sorted_repos
 
     def _get_latest_timestamp(self, events: UserEvents) -> datetime:
         """Get the latest timestamp across all events.
