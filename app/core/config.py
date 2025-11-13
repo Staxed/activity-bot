@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     post_deletions: bool = True
     post_forks: bool = True
 
+    # Action filters (comma-separated)
+    post_pr_actions: str = "opened,closed,merged"
+    post_issue_actions: str = "opened,closed,reopened"
+    post_review_states: str = "approved,changes_requested"
+
     # Discord configuration
     discord_token: str
     discord_channel_id: int
