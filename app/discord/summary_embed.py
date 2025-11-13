@@ -57,9 +57,7 @@ def create_summary_embed(
     )
 
     # Set author with GitHub profile link and avatar
-    embed.set_author(
-        name=username, url=f"https://github.com/{username}", icon_url=avatar_url
-    )
+    embed.set_author(name=username, url=f"https://github.com/{username}", icon_url=avatar_url)
 
     # Build activity summary field (skip zero counts)
     activity_lines = []

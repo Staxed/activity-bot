@@ -211,9 +211,7 @@ class DatabaseClient:
                 await conn.executemany(query, data)
                 # executemany returns None for INSERT statements
                 # We can't tell which were inserted vs skipped due to ON CONFLICT
-                logger.info(
-                    "database.insert_commits.success", total=len(commits)
-                )
+                logger.info("database.insert_commits.success", total=len(commits))
                 return len(commits)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_commits.failed", error=str(e), exc_info=True)
@@ -266,9 +264,7 @@ class DatabaseClient:
                 await conn.executemany(query, data)
                 # executemany returns None for INSERT statements
                 # We can't tell which were inserted vs skipped due to ON CONFLICT
-                logger.info(
-                    "database.insert_pull_requests.success", total=len(prs)
-                )
+                logger.info("database.insert_pull_requests.success", total=len(prs))
                 return len(prs)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_pull_requests.failed", error=str(e), exc_info=True)
@@ -311,9 +307,7 @@ class DatabaseClient:
                 await conn.executemany(query, data)
                 # executemany returns None for INSERT statements
                 # We can't tell which were inserted vs skipped due to ON CONFLICT
-                logger.info(
-                    "database.insert_pr_reviews.success", total=len(reviews)
-                )
+                logger.info("database.insert_pr_reviews.success", total=len(reviews))
                 return len(reviews)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_pr_reviews.failed", error=str(e), exc_info=True)
@@ -402,9 +396,7 @@ class DatabaseClient:
                 await conn.executemany(query, data)
                 # executemany returns None for INSERT statements
                 # We can't tell which were inserted vs skipped due to ON CONFLICT
-                logger.info(
-                    "database.insert_releases.success", total=len(releases)
-                )
+                logger.info("database.insert_releases.success", total=len(releases))
                 return len(releases)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_releases.failed", error=str(e), exc_info=True)
@@ -445,9 +437,7 @@ class DatabaseClient:
                 await conn.executemany(query, data)
                 # executemany returns None for INSERT statements
                 # We can't tell which were inserted vs skipped due to ON CONFLICT
-                logger.info(
-                    "database.insert_creations.success", total=len(creations)
-                )
+                logger.info("database.insert_creations.success", total=len(creations))
                 return len(creations)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_creations.failed", error=str(e), exc_info=True)
@@ -488,9 +478,7 @@ class DatabaseClient:
                 await conn.executemany(query, data)
                 # executemany returns None for INSERT statements
                 # We can't tell which were inserted vs skipped due to ON CONFLICT
-                logger.info(
-                    "database.insert_deletions.success", total=len(deletions)
-                )
+                logger.info("database.insert_deletions.success", total=len(deletions))
                 return len(deletions)
         except asyncpg.PostgresError as e:
             logger.error("database.insert_deletions.failed", error=str(e), exc_info=True)
