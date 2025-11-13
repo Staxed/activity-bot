@@ -1,14 +1,36 @@
 """Discord posting service with retry logic and queue management."""
 
 import asyncio
+from datetime import datetime
 
 import discord
 
+from app.core.config import Settings
 from app.core.logging import get_logger
 from app.discord.bot import DiscordBot
-from app.discord.embeds import create_commit_embeds, group_commits_by_author
+from app.discord.embeds import create_commits_embed
+from app.discord.event_embeds import (
+    create_creations_embed,
+    create_deletions_embed,
+    create_forks_embed,
+    create_issues_embed,
+    create_prs_embed,
+    create_releases_embed,
+    create_reviews_embed,
+)
+from app.discord.event_grouping import UserEvents, group_events_by_user
+from app.discord.summary_embed import create_summary_embed
 from app.shared.exceptions import DiscordAPIError
-from app.shared.models import CommitEvent
+from app.shared.models import (
+    CommitEvent,
+    CreateEvent,
+    DeleteEvent,
+    ForkEvent,
+    IssuesEvent,
+    PullRequestEvent,
+    PullRequestReviewEvent,
+    ReleaseEvent,
+)
 
 logger = get_logger(__name__)
 
@@ -33,75 +55,287 @@ class DiscordPoster:
         self.queue: list[CommitEvent] = []
 
     async def post_commits(self, commits: list[CommitEvent]) -> None:
-        """Post commits to Discord, merging with queued failures.
-
-        Groups commits by author, creates embeds, and posts with retry logic.
-        Failed posts are added back to the queue for next attempt.
+        """Post commits to Discord (backward compatibility wrapper).
 
         Args:
             commits: List of commit events to post
         """
-        # Merge queue with new commits
-        all_commits = self.queue + commits
-        self.queue = []
+        # Call post_all_events with only commits
+        await self.post_all_events(
+            commits=commits,
+            prs=[],
+            issues=[],
+            releases=[],
+            reviews=[],
+            creations=[],
+            deletions=[],
+            forks=[],
+            settings=Settings(),  # type: ignore[call-arg]
+        )
 
-        if not all_commits:
-            logger.info("discord.post.skip", reason="no_commits")
+    async def post_all_events(
+        self,
+        commits: list[CommitEvent],
+        prs: list[PullRequestEvent],
+        issues: list[IssuesEvent],
+        releases: list[ReleaseEvent],
+        reviews: list[PullRequestReviewEvent],
+        creations: list[CreateEvent],
+        deletions: list[DeleteEvent],
+        forks: list[ForkEvent],
+        settings: Settings,
+    ) -> None:
+        """Post all event types to Discord, grouped by user.
+
+        Args:
+            commits: List of commit events
+            prs: List of pull request events
+            issues: List of issue events
+            releases: List of release events
+            reviews: List of review events
+            creations: List of creation events
+            deletions: List of deletion events
+            forks: List of fork events
+            settings: Settings instance for event toggles
+        """
+        # Group events by user
+        grouped_events = group_events_by_user(
+            commits, prs, issues, releases, reviews, creations, deletions, forks
+        )
+
+        if not grouped_events:
+            logger.info("discord.post.skip", reason="no_events")
             return
 
-        logger.info("discord.post.started", total_commits=len(all_commits))
+        logger.info("discord.post.started", users=len(grouped_events))
 
-        # Group commits by author
-        grouped = group_commits_by_author(all_commits)
-
-        # Track failures for requeueing
-        failed_commits: list[CommitEvent] = []
-
-        # Post each author's commits
-        for author, repos in grouped.items():
+        # Post each user's events
+        for username, events in grouped_events.items():
             try:
-                embeds = create_commit_embeds(author, repos)
-                logger.info(
-                    "discord.post.author.started",
-                    author=author,
-                    repos=len(repos),
-                    embeds=len(embeds),
+                # Build embeds list
+                embeds: list[discord.Embed] = []
+
+                # Get user metadata
+                affected_repos = self._extract_affected_repos(events)
+                latest_timestamp = self._get_latest_timestamp(events)
+                avatar_url = self._get_user_avatar(events)
+
+                # Build event counts for summary
+                event_counts = {
+                    "commits": len(events.commits),
+                    "pull_requests": len(events.pull_requests),
+                    "issues": len(events.issues),
+                    "releases": len(events.releases),
+                    "reviews": len(events.reviews),
+                    "creations": len(events.creations),
+                    "deletions": len(events.deletions),
+                    "forks": len(events.forks),
+                }
+
+                # Add summary embed
+                summary = create_summary_embed(
+                    username, avatar_url, event_counts, affected_repos, latest_timestamp
                 )
+                embeds.append(summary)
 
-                # Post each embed with retry
-                for embed_idx, embed in enumerate(embeds):
-                    await self._post_embed_with_retry(embed)
-                    logger.info(
-                        "discord.post.embed.success",
-                        author=author,
-                        embed=f"{embed_idx + 1}/{len(embeds)}",
+                # Add event type embeds (if enabled)
+                if settings.post_commits:
+                    commit_embed = create_commits_embed(events.commits)
+                    if commit_embed:
+                        embeds.append(commit_embed)
+
+                if settings.post_pull_requests:
+                    pr_embed = create_prs_embed(events.pull_requests)
+                    if pr_embed:
+                        embeds.append(pr_embed)
+
+                if settings.post_issues:
+                    issue_embed = create_issues_embed(events.issues)
+                    if issue_embed:
+                        embeds.append(issue_embed)
+
+                if settings.post_releases:
+                    release_embed = create_releases_embed(events.releases)
+                    if release_embed:
+                        embeds.append(release_embed)
+
+                if settings.post_reviews:
+                    review_embed = create_reviews_embed(events.reviews)
+                    if review_embed:
+                        embeds.append(review_embed)
+
+                if settings.post_creations:
+                    creation_embed = create_creations_embed(events.creations)
+                    if creation_embed:
+                        embeds.append(creation_embed)
+
+                if settings.post_deletions:
+                    deletion_embed = create_deletions_embed(events.deletions)
+                    if deletion_embed:
+                        embeds.append(deletion_embed)
+
+                if settings.post_forks:
+                    fork_embed = create_forks_embed(events.forks)
+                    if fork_embed:
+                        embeds.append(fork_embed)
+
+                # Enforce 10-embed limit
+                if len(embeds) > 10:
+                    logger.warning(
+                        "discord.post.embed_limit_exceeded",
+                        username=username,
+                        total_embeds=len(embeds),
+                        truncated_to=10,
                     )
+                    embeds = embeds[:10]
 
-                logger.info("discord.post.author.success", author=author)
+                # Send single message with all embeds
+                channel = self.bot.get_channel()
+                await channel.send(embeds=embeds)
+
+                logger.info(
+                    "discord.post.user.success",
+                    username=username,
+                    embeds=len(embeds),
+                    total_events=sum(event_counts.values()),
+                )
 
             except Exception as e:
                 logger.error(
-                    "discord.post.author.failed",
-                    author=author,
+                    "discord.post.user.failed",
+                    username=username,
                     error=str(e),
                     exc_info=True,
                 )
 
-                # Add this author's commits back to failed list
-                for repo_commits in repos.values():
-                    failed_commits.extend(repo_commits)
+        logger.info("discord.post.complete")
 
-        # Update queue with failed commits
-        self.queue = failed_commits
+    def _extract_affected_repos(self, events: UserEvents) -> list[tuple[str, bool]]:
+        """Extract unique repositories from all event types.
 
-        if failed_commits:
-            logger.warning(
-                "discord.post.complete.partial",
-                posted=len(all_commits) - len(failed_commits),
-                queued=len(failed_commits),
-            )
-        else:
-            logger.info("discord.post.complete.success", posted=len(all_commits))
+        Args:
+            events: UserEvents containing all event types
+
+        Returns:
+            List of (repo_full_name, is_public) tuples
+        """
+        repos: dict[str, bool] = {}
+
+        # Extract from commits
+        for commit in events.commits:
+            repo_key = f"{commit.repo_owner}/{commit.repo_name}"
+            repos[repo_key] = commit.is_public
+
+        # Extract from PRs
+        for pr in events.pull_requests:
+            repo_key = f"{pr.repo_owner}/{pr.repo_name}"
+            repos[repo_key] = pr.is_public
+
+        # Extract from issues
+        for issue in events.issues:
+            repo_key = f"{issue.repo_owner}/{issue.repo_name}"
+            repos[repo_key] = issue.is_public
+
+        # Extract from releases
+        for release in events.releases:
+            repo_key = f"{release.repo_owner}/{release.repo_name}"
+            repos[repo_key] = release.is_public
+
+        # Extract from reviews
+        for review in events.reviews:
+            repo_key = f"{review.repo_owner}/{review.repo_name}"
+            repos[repo_key] = review.is_public
+
+        # Extract from creations
+        for creation in events.creations:
+            repo_key = f"{creation.repo_owner}/{creation.repo_name}"
+            repos[repo_key] = creation.is_public
+
+        # Extract from deletions
+        for deletion in events.deletions:
+            repo_key = f"{deletion.repo_owner}/{deletion.repo_name}"
+            repos[repo_key] = deletion.is_public
+
+        # Extract from forks (source repo)
+        for fork in events.forks:
+            repo_key = f"{fork.source_repo_owner}/{fork.source_repo_name}"
+            repos[repo_key] = fork.is_public
+
+        return list(repos.items())
+
+    def _get_latest_timestamp(self, events: UserEvents) -> datetime:
+        """Get the latest timestamp across all events.
+
+        Args:
+            events: UserEvents containing all event types
+
+        Returns:
+            Latest timestamp found, or current time if no events
+        """
+        timestamps: list[datetime] = []
+
+        for commit in events.commits:
+            timestamps.append(commit.timestamp)
+        for pr in events.pull_requests:
+            timestamps.append(pr.event_timestamp)
+        for issue in events.issues:
+            timestamps.append(issue.event_timestamp)
+        for release in events.releases:
+            timestamps.append(release.event_timestamp)
+        for review in events.reviews:
+            timestamps.append(review.event_timestamp)
+        for creation in events.creations:
+            timestamps.append(creation.event_timestamp)
+        for deletion in events.deletions:
+            timestamps.append(deletion.event_timestamp)
+        for fork in events.forks:
+            timestamps.append(fork.event_timestamp)
+
+        return max(timestamps) if timestamps else datetime.now()
+
+    def _get_user_avatar(self, events: UserEvents) -> str:
+        """Get user avatar URL from first available event.
+
+        Args:
+            events: UserEvents containing all event types
+
+        Returns:
+            Avatar URL, or default GitHub avatar if none found
+        """
+        # Try commits first
+        if events.commits:
+            return events.commits[0].author_avatar_url
+
+        # Try PRs
+        if events.pull_requests:
+            return events.pull_requests[0].author_avatar_url
+
+        # Try issues
+        if events.issues:
+            return events.issues[0].author_avatar_url
+
+        # Try releases
+        if events.releases:
+            return events.releases[0].author_avatar_url
+
+        # Try reviews
+        if events.reviews:
+            return events.reviews[0].reviewer_avatar_url
+
+        # Try creations
+        if events.creations:
+            return events.creations[0].author_avatar_url
+
+        # Try deletions
+        if events.deletions:
+            return events.deletions[0].author_avatar_url
+
+        # Try forks
+        if events.forks:
+            return events.forks[0].forker_avatar_url
+
+        # Fallback
+        return "https://github.com/github.png"
 
     async def _post_embed_with_retry(self, embed: discord.Embed) -> None:
         """Post a single embed with retry logic.
