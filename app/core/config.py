@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
-        extra="ignore",
+        extra="allow",
     )
 
     # GitHub configuration
@@ -91,6 +91,19 @@ class Settings(BaseSettings):
         if not 1 <= v <= 1440:
             raise ConfigError(f"Quote refresh interval must be 1-1440 minutes, got {v}")
         return v
+
+    def model_post_init(self, __context: object) -> None:
+        """Load dynamic fields from environment variables.
+
+        Scans environment for keys ending in _IGNORED_REPOS and stores them
+        as lowercase attributes for per-user repository blacklists.
+        """
+        import os
+
+        for key, value in os.environ.items():
+            if key.endswith("_IGNORED_REPOS"):
+                # Store as lowercase attribute (e.g., USER1_IGNORED_REPOS → user1_ignored_repos)
+                setattr(self, key.lower(), value)
 
     @property
     def tracked_branches_list(self) -> list[str]:
