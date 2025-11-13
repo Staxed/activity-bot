@@ -116,6 +116,70 @@ class Settings(BaseSettings):
             pattern.strip() for pattern in self.ignore_branch_patterns.split(",") if pattern.strip()
         ]
 
+    @property
+    def tracked_users_list(self) -> list[str]:
+        """Parse comma-separated tracked users into a list.
+
+        Returns:
+            List of GitHub usernames to track (e.g., ['user1', 'user2'])
+        """
+        if not self.tracked_github_users:
+            return []
+        return [user.strip() for user in self.tracked_github_users.split(",") if user.strip()]
+
+    @property
+    def pr_actions_list(self) -> list[str]:
+        """Parse comma-separated PR actions into a list.
+
+        Returns:
+            List of PR actions to post (e.g., ['opened', 'closed', 'merged'])
+        """
+        if not self.post_pr_actions:
+            return []
+        return [action.strip() for action in self.post_pr_actions.split(",") if action.strip()]
+
+    @property
+    def issue_actions_list(self) -> list[str]:
+        """Parse comma-separated issue actions into a list.
+
+        Returns:
+            List of issue actions to post (e.g., ['opened', 'closed', 'reopened'])
+        """
+        if not self.post_issue_actions:
+            return []
+        return [action.strip() for action in self.post_issue_actions.split(",") if action.strip()]
+
+    @property
+    def review_states_list(self) -> list[str]:
+        """Parse comma-separated review states into a list.
+
+        Returns:
+            List of review states to post (e.g., ['approved', 'changes_requested'])
+        """
+        if not self.post_review_states:
+            return []
+        return [state.strip() for state in self.post_review_states.split(",") if state.strip()]
+
+    def get_user_ignored_repos(self, username: str) -> list[str]:
+        """Get list of ignored repositories for a specific user.
+
+        Reads {USERNAME_UPPER}_IGNORED_REPOS environment variable and parses
+        comma-separated repository patterns.
+
+        Args:
+            username: GitHub username (will be uppercased for env var lookup)
+
+        Returns:
+            List of repository patterns to ignore (e.g., ['org/repo1', 'user/*'])
+        """
+        import os
+
+        env_var_name = f"{username.upper()}_IGNORED_REPOS"
+        ignored_repos = os.environ.get(env_var_name, "")
+        if not ignored_repos:
+            return []
+        return [repo.strip() for repo in ignored_repos.split(",") if repo.strip()]
+
 
 def get_settings() -> Settings:
     """Get or create the global Settings instance (cached singleton)."""
