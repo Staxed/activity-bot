@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     ignore_branch_patterns: str = ""
     tracked_github_users: str = "staxed"  # Comma-separated list
 
+    # Event type toggles
+    post_commits: bool = True
+    post_pull_requests: bool = True
+    post_issues: bool = True
+    post_releases: bool = True
+    post_reviews: bool = True
+    post_creations: bool = True
+    post_deletions: bool = True
+    post_forks: bool = True
+
     # Discord configuration
     discord_token: str
     discord_channel_id: int
