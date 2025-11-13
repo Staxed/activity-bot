@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     github_token: str
     tracked_branches: str = "main"
     ignore_branch_patterns: str = ""
+    tracked_github_users: str = "staxed"  # Comma-separated list
 
     # Discord configuration
     discord_token: str
