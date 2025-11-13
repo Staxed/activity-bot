@@ -621,6 +621,551 @@ class DatabaseClient:
             logger.error("database.mark_commits_posted.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to mark commits as posted: {e}") from e
 
+    async def get_unposted_prs(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted pull requests within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of PRs to retrieve (default 12 hours)
+
+        Returns:
+            List of PullRequestEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import PullRequestEvent
+
+        query = """
+            SELECT * FROM pull_requests
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                prs = [
+                    PullRequestEvent(
+                        event_id=row["event_id"],
+                        pr_number=row["pr_number"],
+                        action=row["action"],
+                        title=row["title"],
+                        state=row["state"],
+                        merged=row["merged"],
+                        author_username=row["author_username"],
+                        author_avatar_url=row["author_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_prs.success", count=len(prs))
+                return prs
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_prs.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted PRs: {e}") from e
+
+    async def mark_prs_posted(self, event_ids: list[str]) -> None:
+        """Mark pull requests as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE pull_requests
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_prs_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_prs_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark PRs as posted: {e}") from e
+
+    async def get_unposted_issues(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted issues within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of issues to retrieve (default 12 hours)
+
+        Returns:
+            List of IssuesEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import IssuesEvent
+
+        query = """
+            SELECT * FROM issues
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                issues = [
+                    IssuesEvent(
+                        event_id=row["event_id"],
+                        issue_number=row["issue_number"],
+                        action=row["action"],
+                        title=row["title"],
+                        state=row["state"],
+                        author_username=row["author_username"],
+                        author_avatar_url=row["author_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_issues.success", count=len(issues))
+                return issues
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_issues.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted issues: {e}") from e
+
+    async def mark_issues_posted(self, event_ids: list[str]) -> None:
+        """Mark issues as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE issues
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_issues_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_issues_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark issues as posted: {e}") from e
+
+    async def get_unposted_releases(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted releases within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of releases to retrieve (default 12 hours)
+
+        Returns:
+            List of ReleaseEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import ReleaseEvent
+
+        query = """
+            SELECT * FROM releases
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                releases = [
+                    ReleaseEvent(
+                        event_id=row["event_id"],
+                        tag_name=row["tag_name"],
+                        release_name=row["release_name"],
+                        is_prerelease=row["is_prerelease"],
+                        is_draft=row["is_draft"],
+                        author_username=row["author_username"],
+                        author_avatar_url=row["author_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"],
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_releases.success", count=len(releases))
+                return releases
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_releases.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted releases: {e}") from e
+
+    async def mark_releases_posted(self, event_ids: list[str]) -> None:
+        """Mark releases as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE releases
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_releases_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_releases_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark releases as posted: {e}") from e
+
+    async def get_unposted_reviews(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted PR reviews within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of reviews to retrieve (default 12 hours)
+
+        Returns:
+            List of PullRequestReviewEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import PullRequestReviewEvent
+
+        query = """
+            SELECT * FROM pr_reviews
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                reviews = [
+                    PullRequestReviewEvent(
+                        event_id=row["event_id"],
+                        pr_number=row["pr_number"],
+                        action=row["action"],
+                        review_state=row["review_state"],
+                        reviewer_username=row["reviewer_username"],
+                        reviewer_avatar_url=row["reviewer_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_reviews.success", count=len(reviews))
+                return reviews
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_reviews.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted reviews: {e}") from e
+
+    async def mark_reviews_posted(self, event_ids: list[str]) -> None:
+        """Mark PR reviews as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE pr_reviews
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_reviews_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_reviews_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark reviews as posted: {e}") from e
+
+    async def get_unposted_creations(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted creation events within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of creations to retrieve (default 12 hours)
+
+        Returns:
+            List of CreateEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import CreateEvent
+
+        query = """
+            SELECT * FROM creations
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                creations = [
+                    CreateEvent(
+                        event_id=row["event_id"],
+                        ref_type=row["ref_type"],
+                        ref_name=row["ref_name"],
+                        author_username=row["author_username"],
+                        author_avatar_url=row["author_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_creations.success", count=len(creations))
+                return creations
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_creations.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted creations: {e}") from e
+
+    async def mark_creations_posted(self, event_ids: list[str]) -> None:
+        """Mark creation events as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE creations
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_creations_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_creations_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark creations as posted: {e}") from e
+
+    async def get_unposted_deletions(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted deletion events within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of deletions to retrieve (default 12 hours)
+
+        Returns:
+            List of DeleteEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import DeleteEvent
+
+        query = """
+            SELECT * FROM deletions
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                deletions = [
+                    DeleteEvent(
+                        event_id=row["event_id"],
+                        ref_type=row["ref_type"],
+                        ref_name=row["ref_name"],
+                        author_username=row["author_username"],
+                        author_avatar_url=row["author_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_deletions.success", count=len(deletions))
+                return deletions
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_deletions.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted deletions: {e}") from e
+
+    async def mark_deletions_posted(self, event_ids: list[str]) -> None:
+        """Mark deletion events as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE deletions
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_deletions_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_deletions_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark deletions as posted: {e}") from e
+
+    async def get_unposted_forks(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted fork events within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of forks to retrieve (default 12 hours)
+
+        Returns:
+            List of ForkEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import ForkEvent
+
+        query = """
+            SELECT * FROM forks
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                forks = [
+                    ForkEvent(
+                        event_id=row["event_id"],
+                        forker_username=row["forker_username"],
+                        forker_avatar_url=row["forker_avatar_url"] or "",
+                        source_repo_owner=row["source_repo_owner"],
+                        source_repo_name=row["source_repo_name"],
+                        fork_repo_owner=row["fork_repo_owner"],
+                        fork_repo_name=row["fork_repo_name"],
+                        is_public=row["is_public"],
+                        fork_url=row["fork_url"],
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_forks.success", count=len(forks))
+                return forks
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_forks.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted forks: {e}") from e
+
+    async def mark_forks_posted(self, event_ids: list[str]) -> None:
+        """Mark fork events as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE forks
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_forks_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_forks_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark forks as posted: {e}") from e
+
     async def get_unposted_commit_shas(self, shas: list[str]) -> set[str]:
         """Get list of commit SHAs that haven't been posted to Discord yet.
 
