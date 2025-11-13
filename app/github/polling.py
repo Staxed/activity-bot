@@ -120,7 +120,7 @@ class GitHubPollingService:
                         event_type=event.get("type", "Unknown"),
                     )
                     continue
-                
+
                 try:
                     event_id_int = int(event_id)
                 except (ValueError, TypeError):
@@ -281,14 +281,22 @@ class GitHubPollingService:
         creations = [c for c in creations if filter_by_repo(c)]
         deletions = [d for d in deletions if filter_by_repo(d)]
         # Forks use source_repo_owner/source_repo_name
-        forks = [f for f in forks if should_track_repo(f"{f.source_repo_owner}/{f.source_repo_name}", ignored_repos)]
+        forks = [
+            f
+            for f in forks
+            if should_track_repo(f"{f.source_repo_owner}/{f.source_repo_name}", ignored_repos)
+        ]
 
         # Apply branch filtering to commits
-        commits = [c for c in commits if should_track_branch(
-            c.branch,
-            self.settings.tracked_branches_list,
-            self.settings.ignore_branch_patterns_list,
-        )]
+        commits = [
+            c
+            for c in commits
+            if should_track_branch(
+                c.branch,
+                self.settings.tracked_branches_list,
+                self.settings.ignore_branch_patterns_list,
+            )
+        ]
 
         # Apply action filtering
         prs = filter_pr_actions(prs, self.settings.pr_actions_list)
@@ -341,13 +349,24 @@ class GitHubPollingService:
                     await self.db.mark_forks_posted([f.event_id for f in forks])
 
             except Exception as e:
-                logger.error("discord.post.user.error", username=username, error=str(e), exc_info=True)
+                logger.error(
+                    "discord.post.user.error", username=username, error=str(e), exc_info=True
+                )
 
         # Update state with newest event ID
         newest_event_id = events[0]["id"]
         await set_last_event_id_async(self.db, newest_event_id)
 
-        total_events = len(commits) + len(prs) + len(issues) + len(releases) + len(pr_reviews) + len(creations) + len(deletions) + len(forks)
+        total_events = (
+            len(commits)
+            + len(prs)
+            + len(issues)
+            + len(releases)
+            + len(pr_reviews)
+            + len(creations)
+            + len(deletions)
+            + len(forks)
+        )
 
         logger.info(
             "github.poll.user.complete",

@@ -132,13 +132,21 @@ async def recover_unposted_events(
 
         # Mark all events as posted
         await asyncio.gather(
-            db.mark_commits_posted([f"commit_{c.sha}" for c in commits]) if commits else asyncio.sleep(0),
+            db.mark_commits_posted([f"commit_{c.sha}" for c in commits])
+            if commits
+            else asyncio.sleep(0),
             db.mark_prs_posted([pr.event_id for pr in prs]) if prs else asyncio.sleep(0),
             db.mark_issues_posted([i.event_id for i in issues]) if issues else asyncio.sleep(0),
-            db.mark_releases_posted([r.event_id for r in releases]) if releases else asyncio.sleep(0),
+            db.mark_releases_posted([r.event_id for r in releases])
+            if releases
+            else asyncio.sleep(0),
             db.mark_reviews_posted([r.event_id for r in reviews]) if reviews else asyncio.sleep(0),
-            db.mark_creations_posted([c.event_id for c in creations]) if creations else asyncio.sleep(0),
-            db.mark_deletions_posted([d.event_id for d in deletions]) if deletions else asyncio.sleep(0),
+            db.mark_creations_posted([c.event_id for c in creations])
+            if creations
+            else asyncio.sleep(0),
+            db.mark_deletions_posted([d.event_id for d in deletions])
+            if deletions
+            else asyncio.sleep(0),
             db.mark_forks_posted([f.event_id for f in forks]) if forks else asyncio.sleep(0),
         )
 

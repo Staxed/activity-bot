@@ -154,7 +154,7 @@ def filter_events_by_type(events: list[dict[str, Any]]) -> dict[str, list[dict[s
     for event in events:
         event_type = event.get("type", "")
         event_id = event.get("id", "unknown")
-        
+
         if event_type in categorized:
             categorized[event_type].append(event)
         elif event_type:
@@ -189,7 +189,7 @@ async def parse_pull_requests_from_events(events: list[dict[str, Any]]) -> list[
                     error="Missing payload",
                 )
                 continue
-            
+
             payload = event.get("payload", {})
             if not payload.get("pull_request"):
                 logger.warning(
@@ -198,7 +198,7 @@ async def parse_pull_requests_from_events(events: list[dict[str, Any]]) -> list[
                     error="Missing pull_request in payload",
                 )
                 continue
-                
+
             prs.append(PullRequestEvent.from_github_event(event))
         except KeyError as e:
             logger.warning(

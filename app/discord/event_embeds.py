@@ -273,7 +273,9 @@ def create_creations_embed(creations: list[CreateEvent]) -> discord.Embed | None
         return None
 
     # Sort by timestamp, newest first
-    sorted_creations = sorted(creations, key=lambda creation: creation.event_timestamp, reverse=True)
+    sorted_creations = sorted(
+        creations, key=lambda creation: creation.event_timestamp, reverse=True
+    )
 
     # Create embed
     embed = discord.Embed(
@@ -328,7 +330,9 @@ def create_deletions_embed(deletions: list[DeleteEvent]) -> discord.Embed | None
         return None
 
     # Sort by timestamp, newest first
-    sorted_deletions = sorted(deletions, key=lambda deletion: deletion.event_timestamp, reverse=True)
+    sorted_deletions = sorted(
+        deletions, key=lambda deletion: deletion.event_timestamp, reverse=True
+    )
 
     # Create embed
     embed = discord.Embed(
@@ -405,7 +409,9 @@ def create_forks_embed(forks: list[ForkEvent]) -> discord.Embed | None:
 
         # Both source and fork should be public (GitHub API behavior)
         if fork.fork_url:
-            line = f"• Forked {source_repo} → [{fork_repo}]({fork.fork_url}) - <t:{unix_timestamp}:t>"
+            line = (
+                f"• Forked {source_repo} → [{fork_repo}]({fork.fork_url}) - <t:{unix_timestamp}:t>"
+            )
         else:
             line = f"• Forked {source_repo} → {fork_repo} - <t:{unix_timestamp}:t>"
 
