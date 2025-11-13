@@ -12,6 +12,11 @@ from app.core.state import StateManager
 from app.discord.bot import DiscordBot
 from app.discord.poster import DiscordPoster
 from app.discord.quotes import QuoteService, set_quote_service
+from app.github.action_filter import (
+    filter_issue_actions,
+    filter_pr_actions,
+    filter_review_states,
+)
 from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
 from app.github.polling import GitHubPollingService
@@ -28,67 +33,116 @@ discord_poster: DiscordPoster | None = None
 polling_service: GitHubPollingService | None = None
 
 
-async def recover_unposted_commits(
+async def recover_unposted_events(
     db: DatabaseClient,
     discord_poster: DiscordPoster,
     settings: Settings,
 ) -> None:
-    """Recover and post unposted commits from database on startup.
+    """Recover and post unposted events from database on startup.
 
     Args:
         db: Database client
-        discord_poster: Discord poster for commit notifications
+        discord_poster: Discord poster for event notifications
         settings: Application settings
 
     Note:
-        Only commits within 12-hour window and matching tracked branches are recovered.
+        Recovers all 8 event types within 12-hour window with filtering applied.
         Errors are logged but don't fail startup.
     """
     try:
         logger.info("recovery.started", max_age_hours=12)
 
-        # Fetch unposted commits from database
-        unposted_commits = await db.get_unposted_commits(max_age_hours=12)
+        # Fetch all unposted events from database in parallel
+        (
+            commits,
+            prs,
+            issues,
+            releases,
+            reviews,
+            creations,
+            deletions,
+            forks,
+        ) = await asyncio.gather(
+            db.get_unposted_commits(max_age_hours=12),
+            db.get_unposted_prs(max_age_hours=12),
+            db.get_unposted_issues(max_age_hours=12),
+            db.get_unposted_releases(max_age_hours=12),
+            db.get_unposted_reviews(max_age_hours=12),
+            db.get_unposted_creations(max_age_hours=12),
+            db.get_unposted_deletions(max_age_hours=12),
+            db.get_unposted_forks(max_age_hours=12),
+        )
 
-        if not unposted_commits:
-            logger.info("recovery.no_commits")
-            return
-
-        # Filter by tracked branches
-        tracked_commits = []
-        for commit in unposted_commits:
+        # Apply branch filtering to commits
+        commits = [
+            c
+            for c in commits
             if should_track_branch(
-                commit.branch,
+                c.branch,
                 settings.tracked_branches_list,
                 settings.ignore_branch_patterns_list,
-            ):
-                tracked_commits.append(commit)
-            else:
-                logger.debug(
-                    "recovery.commit.skipped",
-                    sha=commit.short_sha,
-                    branch=commit.branch,
-                    reason="branch_filtered",
-                )
+            )
+        ]
 
-        if not tracked_commits:
-            logger.info("recovery.no_tracked_commits", total=len(unposted_commits))
+        # Apply action filtering
+        prs = filter_pr_actions(prs, settings.pr_actions_list)
+        issues = filter_issue_actions(issues, settings.issue_actions_list)
+        reviews = filter_review_states(reviews, settings.review_states_list)
+
+        total_events = (
+            len(commits)
+            + len(prs)
+            + len(issues)
+            + len(releases)
+            + len(reviews)
+            + len(creations)
+            + len(deletions)
+            + len(forks)
+        )
+
+        if total_events == 0:
+            logger.info("recovery.no_events")
             return
 
         logger.info(
-            "recovery.posting_commits",
-            total=len(tracked_commits),
-            filtered=len(unposted_commits) - len(tracked_commits),
+            "recovery.posting_events",
+            total=total_events,
+            commits=len(commits),
+            prs=len(prs),
+            issues=len(issues),
+            releases=len(releases),
+            reviews=len(reviews),
+            creations=len(creations),
+            deletions=len(deletions),
+            forks=len(forks),
         )
 
-        # Post to Discord
-        await discord_poster.post_commits(tracked_commits)
+        # Post all events to Discord
+        await discord_poster.post_all_events(
+            commits=commits,
+            prs=prs,
+            issues=issues,
+            releases=releases,
+            reviews=reviews,
+            creations=creations,
+            deletions=deletions,
+            forks=forks,
+            settings=settings,
+        )
 
-        # Mark as posted in database
-        event_ids = [f"commit_{c.sha}" for c in tracked_commits]
-        await db.mark_commits_posted(event_ids)
+        # Mark all events as posted
+        await asyncio.gather(
+            db.mark_commits_posted([f"commit_{c.sha}" for c in commits]) if commits else asyncio.sleep(0),
+            db.mark_prs_posted([pr.event_id for pr in prs]) if prs else asyncio.sleep(0),
+            db.mark_issues_posted([i.event_id for i in issues]) if issues else asyncio.sleep(0),
+            db.mark_releases_posted([r.event_id for r in releases]) if releases else asyncio.sleep(0),
+            db.mark_reviews_posted([r.event_id for r in reviews]) if reviews else asyncio.sleep(0),
+            db.mark_creations_posted([c.event_id for c in creations]) if creations else asyncio.sleep(0),
+            db.mark_deletions_posted([d.event_id for d in deletions]) if deletions else asyncio.sleep(0),
+            db.mark_forks_posted([f.event_id for f in forks]) if forks else asyncio.sleep(0),
+        )
 
-        logger.info("recovery.completed", posted=len(tracked_commits))
+        logger.info("recovery.completed", posted=total_events)
 
     except Exception as e:
         # Log error but don't fail startup
@@ -137,10 +191,10 @@ async def startup() -> None:
     github_client = GitHubClient(settings.github_token)
     await github_client.__aenter__()
 
-    # Validate GitHub token and get username
+    # Validate GitHub token
     try:
-        username = await github_client.get_authenticated_user()
-        logger.info("github.auth.validated", username=username)
+        authenticated_user = await github_client.get_authenticated_user()
+        logger.info("github.auth.validated", username=authenticated_user)
     except GitHubAPIError as e:
         logger.error("github.auth.failed", error=str(e))
         await github_client.__aexit__(None, None, None)
@@ -157,15 +211,15 @@ async def startup() -> None:
     # Create Discord poster
     discord_poster = DiscordPoster(discord_bot)
 
-    # Recover unposted commits before starting polling
-    await recover_unposted_commits(database_client, discord_poster, settings)
+    # Recover unposted events before starting polling
+    await recover_unposted_events(database_client, discord_poster, settings)
 
-    # Initialize and start polling service
+    # Initialize and start polling service with tracked users
     polling_service = GitHubPollingService(
         client=github_client,
         state=state,
         settings=settings,
-        username=username,
+        usernames=settings.tracked_users_list,
         db=database_client,
         discord_poster=discord_poster,
     )
