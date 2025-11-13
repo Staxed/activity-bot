@@ -43,22 +43,23 @@ def create_prs_embed(prs: list[PullRequestEvent]) -> discord.Embed | None:
     if not prs:
         return None
 
-    # Sort by timestamp, newest first
-    sorted_prs = sorted(prs, key=lambda pr: pr.event_timestamp, reverse=True)
+    # Sort by public repos first, then by timestamp (newest first)
+    sorted_prs = sorted(prs, key=lambda pr: (pr.is_public, pr.event_timestamp), reverse=True)
 
     # Create embed
     embed = discord.Embed(
         title="🔀 Pull Requests",
         color=PR_COLOR,
-        timestamp=sorted_prs[0].event_timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for pr in sorted_prs:
+    for i, pr in enumerate(sorted_prs):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line based on repository visibility
         unix_timestamp = int(pr.event_timestamp.timestamp())
         repo_full_name = f"{pr.repo_owner}/{pr.repo_name}"
@@ -68,18 +69,13 @@ def create_prs_embed(prs: list[PullRequestEvent]) -> discord.Embed | None:
         else:
             line = f"• #{pr.pr_number}: {pr.title} ({pr.action}) in {repo_full_name} [Private Repo] - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_prs) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more pull request(s)")
 
@@ -98,22 +94,23 @@ def create_issues_embed(issues: list[IssuesEvent]) -> discord.Embed | None:
     if not issues:
         return None
 
-    # Sort by timestamp, newest first
-    sorted_issues = sorted(issues, key=lambda issue: issue.event_timestamp, reverse=True)
+    # Sort by public repos first, then by timestamp (newest first)
+    sorted_issues = sorted(issues, key=lambda issue: (issue.is_public, issue.event_timestamp), reverse=True)
 
     # Create embed
     embed = discord.Embed(
         title="🐛 Issues",
         color=ISSUE_COLOR,
-        timestamp=sorted_issues[0].event_timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for issue in sorted_issues:
+    for i, issue in enumerate(sorted_issues):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line based on repository visibility
         unix_timestamp = int(issue.event_timestamp.timestamp())
         repo_full_name = f"{issue.repo_owner}/{issue.repo_name}"
@@ -123,18 +120,13 @@ def create_issues_embed(issues: list[IssuesEvent]) -> discord.Embed | None:
         else:
             line = f"• #{issue.issue_number}: {issue.title} ({issue.action}) in {repo_full_name} [Private Repo] - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_issues) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more issue(s)")
 
@@ -153,22 +145,23 @@ def create_releases_embed(releases: list[ReleaseEvent]) -> discord.Embed | None:
     if not releases:
         return None
 
-    # Sort by timestamp, newest first
-    sorted_releases = sorted(releases, key=lambda release: release.event_timestamp, reverse=True)
+    # Sort by public repos first, then by timestamp (newest first)
+    sorted_releases = sorted(releases, key=lambda release: (release.is_public, release.event_timestamp), reverse=True)
 
     # Create embed
     embed = discord.Embed(
         title="🚀 Releases",
         color=RELEASE_COLOR,
-        timestamp=sorted_releases[0].event_timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for release in sorted_releases:
+    for i, release in enumerate(sorted_releases):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line based on repository visibility
         unix_timestamp = int(release.event_timestamp.timestamp())
         repo_full_name = f"{release.repo_owner}/{release.repo_name}"
@@ -184,18 +177,13 @@ def create_releases_embed(releases: list[ReleaseEvent]) -> discord.Embed | None:
         else:
             line = f"• {release.tag_name}: {release_display_name}{prerelease_label} in {repo_full_name} [Private Repo] - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_releases) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more release(s)")
 
@@ -214,22 +202,23 @@ def create_reviews_embed(reviews: list[PullRequestReviewEvent]) -> discord.Embed
     if not reviews:
         return None
 
-    # Sort by timestamp, newest first
-    sorted_reviews = sorted(reviews, key=lambda review: review.event_timestamp, reverse=True)
+    # Sort by public repos first, then by timestamp (newest first)
+    sorted_reviews = sorted(reviews, key=lambda review: (review.is_public, review.event_timestamp), reverse=True)
 
     # Create embed
     embed = discord.Embed(
         title="👀 Pull Request Reviews",
         color=REVIEW_COLOR,
-        timestamp=sorted_reviews[0].event_timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for review in sorted_reviews:
+    for i, review in enumerate(sorted_reviews):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line based on repository visibility
         unix_timestamp = int(review.event_timestamp.timestamp())
         repo_full_name = f"{review.repo_owner}/{review.repo_name}"
@@ -242,18 +231,13 @@ def create_reviews_embed(reviews: list[PullRequestReviewEvent]) -> discord.Embed
         else:
             line = f"• {state_emoji} PR #{review.pr_number} ({review.review_state}) in {repo_full_name} [Private Repo] - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_reviews) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more review(s)")
 
@@ -272,24 +256,25 @@ def create_creations_embed(creations: list[CreateEvent]) -> discord.Embed | None
     if not creations:
         return None
 
-    # Sort by timestamp, newest first
+    # Sort by public repos first, then by timestamp (newest first)
     sorted_creations = sorted(
-        creations, key=lambda creation: creation.event_timestamp, reverse=True
+        creations, key=lambda creation: (creation.is_public, creation.event_timestamp), reverse=True
     )
 
     # Create embed
     embed = discord.Embed(
         title="🌱 Creations",
         color=CREATION_COLOR,
-        timestamp=sorted_creations[0].event_timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for creation in sorted_creations:
+    for i, creation in enumerate(sorted_creations):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line based on repository visibility
         unix_timestamp = int(creation.event_timestamp.timestamp())
         repo_full_name = f"{creation.repo_owner}/{creation.repo_name}"
@@ -299,18 +284,13 @@ def create_creations_embed(creations: list[CreateEvent]) -> discord.Embed | None
         else:
             line = f"• Created {creation.ref_type} `{creation.ref_name}` in {repo_full_name} [Private Repo] - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_creations) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more creation(s)")
 
@@ -329,24 +309,25 @@ def create_deletions_embed(deletions: list[DeleteEvent]) -> discord.Embed | None
     if not deletions:
         return None
 
-    # Sort by timestamp, newest first
+    # Sort by public repos first, then by timestamp (newest first)
     sorted_deletions = sorted(
-        deletions, key=lambda deletion: deletion.event_timestamp, reverse=True
+        deletions, key=lambda deletion: (deletion.is_public, deletion.event_timestamp), reverse=True
     )
 
     # Create embed
     embed = discord.Embed(
         title="🗑️ Deletions",
         color=DELETION_COLOR,
-        timestamp=sorted_deletions[0].event_timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for deletion in sorted_deletions:
+    for i, deletion in enumerate(sorted_deletions):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line based on repository visibility
         unix_timestamp = int(deletion.event_timestamp.timestamp())
         repo_full_name = f"{deletion.repo_owner}/{deletion.repo_name}"
@@ -356,18 +337,13 @@ def create_deletions_embed(deletions: list[DeleteEvent]) -> discord.Embed | None
         else:
             line = f"• Deleted {deletion.ref_type} `{deletion.ref_name}` in {repo_full_name} [Private Repo] - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_deletions) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more deletion(s)")
 
@@ -386,22 +362,23 @@ def create_forks_embed(forks: list[ForkEvent]) -> discord.Embed | None:
     if not forks:
         return None
 
-    # Sort by timestamp, newest first
-    sorted_forks = sorted(forks, key=lambda fork: fork.event_timestamp, reverse=True)
+    # Sort by public repos first, then by timestamp (newest first)
+    sorted_forks = sorted(forks, key=lambda fork: (fork.is_public, fork.event_timestamp), reverse=True)
 
     # Create embed
     embed = discord.Embed(
         title="🍴 Forks",
         color=FORK_COLOR,
-        timestamp=sorted_forks[0].event_timestamp,
     )
 
-    # Build description with overflow tracking
+    # Build description with max 10 items shown
+    MAX_ITEMS = 10
     description_lines = []
-    current_length = 0
-    overflow_count = 0
 
-    for fork in sorted_forks:
+    for i, fork in enumerate(sorted_forks):
+        if i >= MAX_ITEMS:
+            break
+
         # Format line
         unix_timestamp = int(fork.event_timestamp.timestamp())
         source_repo = f"{fork.source_repo_owner}/{fork.source_repo_name}"
@@ -415,18 +392,13 @@ def create_forks_embed(forks: list[ForkEvent]) -> discord.Embed | None:
         else:
             line = f"• Forked {source_repo} → {fork_repo} - <t:{unix_timestamp}:t>"
 
-        # Check if adding this line would exceed limit
-        line_length = len(line) + 1  # +1 for newline
-        if current_length + line_length > MAX_DESCRIPTION_LENGTH:
-            overflow_count += 1
-        else:
-            description_lines.append(line)
-            current_length += line_length
+        description_lines.append(line)
 
     # Set description
     embed.description = "\n".join(description_lines)
 
-    # Add footer if overflow
+    # Add footer if there are more items
+    overflow_count = len(sorted_forks) - MAX_ITEMS
     if overflow_count > 0:
         embed.set_footer(text=f"... and {overflow_count} more fork(s)")
 
