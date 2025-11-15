@@ -1,12 +1,13 @@
 """GitHub event polling service with failure tracking."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import Settings
 from app.core.database import DatabaseClient
 from app.core.logging import get_logger
-from app.core.state import StateManager, get_last_event_id_async, set_last_event_id_async
+from app.core.state import StateManager
 from app.github.action_filter import (
     filter_issue_actions,
     filter_pr_actions,
@@ -78,30 +79,35 @@ class GitHubPollingService:
         self.running = False
         self.task: asyncio.Task[None] | None = None
 
-    async def _fetch_events_until_last_id(
-        self, username: str, last_event_id: str | None
-    ) -> list[dict[str, Any]]:
-        """Fetch events from GitHub API until last_event_id is found.
+    async def _fetch_recent_events(self, username: str) -> list[dict[str, Any]]:
+        """Fetch GitHub events from last 12 hours.
+
+        Fetches up to 300 events (10 pages) and filters to those within
+        the last 12 hours. Relies on database deduplication via ON CONFLICT.
+
+        This approach fixes the bug where rapid event sequences (e.g., create branch,
+        commit, open PR, merge) were missed due to GitHub API indexing delays.
+        By fetching a wide time window and relying on database deduplication,
+        we ensure all events are eventually captured even if they appear in the
+        API response after subsequent polls.
 
         Args:
             username: GitHub username to fetch events for
-            last_event_id: Last processed event ID (None on first run)
 
         Returns:
-            List of new events (empty on first run or if last_event_id not found)
-
-        Note:
-            - First run (last_event_id is None): Fetches page 1 only, returns []
-            - Subsequent runs: Fetches pages until last_event_id found
-            - Logs warning if last_event_id never found (>300 events missed)
+            List of events within 12-hour window, newest first
         """
-        # First run: fetch latest events but don't process
-        if last_event_id is None:
-            await self.client.fetch_user_events(username, page=1)
-            return []
+        # Calculate 12-hour cutoff time
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=12)
 
-        collected_events: list[dict[str, Any]] = []
-        last_event_id_int = int(last_event_id)
+        logger.info(
+            "github.fetch_recent.started",
+            username=username,
+            cutoff_time=cutoff_time.isoformat(),
+        )
+
+        # Fetch up to 300 events (10 pages × 30 per_page)
+        all_events: list[dict[str, Any]] = []
 
         for page in range(1, self.MAX_PAGES + 1):
             events = await self.client.fetch_user_events(username, page=page)
@@ -110,49 +116,46 @@ class GitHubPollingService:
                 # No more events available
                 break
 
-            # Collect events newer than last_event_id
-            for event in events:
-                event_id = event.get("id")
-                if not event_id:
-                    logger.warning(
-                        "github.poll.event_missing_id",
-                        page=page,
-                        event_type=event.get("type", "Unknown"),
-                    )
-                    continue
+            all_events.extend(events)
 
-                try:
-                    event_id_int = int(event_id)
-                except (ValueError, TypeError):
-                    logger.warning(
-                        "github.poll.invalid_event_id",
-                        event_id=event_id,
-                        page=page,
-                    )
-                    continue
+        # Filter events to 12-hour window
+        filtered_events: list[dict[str, Any]] = []
 
-                if event_id_int > last_event_id_int:
-                    collected_events.append(event)
-                else:
-                    # Found the last processed event, stop here
-                    logger.info(
-                        "github.poll.found_last_event",
-                        last_event_id=last_event_id,
-                        page=page,
-                        new_events=len(collected_events),
-                    )
-                    return collected_events
+        for event in all_events:
+            # Parse event timestamp
+            created_at_str = event.get("created_at")
+            if not created_at_str:
+                logger.warning(
+                    "github.fetch_recent.missing_timestamp",
+                    event_id=event.get("id"),
+                    event_type=event.get("type"),
+                )
+                continue
 
-        # If we get here, we never found last_event_id
-        if collected_events:
-            logger.warning(
-                "github.poll.missed_events",
-                last_event_id=last_event_id,
-                pages_fetched=self.MAX_PAGES,
-                collected=len(collected_events),
-            )
+            try:
+                # GitHub timestamps are in ISO 8601 format with 'Z' suffix
+                event_time = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
 
-        return collected_events
+                if event_time >= cutoff_time:
+                    filtered_events.append(event)
+            except (ValueError, AttributeError) as e:
+                logger.warning(
+                    "github.fetch_recent.invalid_timestamp",
+                    event_id=event.get("id"),
+                    timestamp=created_at_str,
+                    error=str(e),
+                )
+                continue
+
+        logger.info(
+            "github.fetch_recent.complete",
+            username=username,
+            total_fetched=len(all_events),
+            within_window=len(filtered_events),
+            pages_fetched=min(page, self.MAX_PAGES),
+        )
+
+        return filtered_events
 
     async def poll_once(self) -> int:
         """Poll GitHub events for all users and store events in database.
@@ -198,7 +201,11 @@ class GitHubPollingService:
             return 0
 
     async def _poll_user(self, username: str) -> int:
-        """Poll GitHub events for a single user.
+        """Poll GitHub events for a single user using time-window approach.
+
+        Fetches all events from last 12 hours and relies on database deduplication
+        to prevent duplicate processing. This fixes the bug where rapid event
+        sequences were missed due to GitHub API indexing delays.
 
         Args:
             username: GitHub username to poll
@@ -206,38 +213,18 @@ class GitHubPollingService:
         Returns:
             Number of events processed for this user
         """
-        # Get last event ID from database (shared across all users)
-        last_event_id = await get_last_event_id_async(self.db)
-
         logger.info(
             "github.poll.user.started",
             username=username,
-            last_event_id=last_event_id,
+            window_hours=12,
         )
 
-        # Fetch events since last poll
-        events = await self._fetch_events_until_last_id(username, last_event_id)
+        # Fetch events from last 12 hours
+        events = await self._fetch_recent_events(username)
 
-        # First run: store newest event ID without processing
-        if last_event_id is None:
-            if events:
-                newest_id = events[0]["id"]
-                await set_last_event_id_async(self.db, newest_id)
-                logger.info("github.poll.user.first_run", username=username, event_id=newest_id)
-            else:
-                # No events at all, fetch first page to get latest ID
-                first_page = await self.client.fetch_user_events(username, page=1)
-                if first_page:
-                    newest_id = first_page[0]["id"]
-                    await set_last_event_id_async(self.db, newest_id)
-                    logger.info("github.poll.user.first_run", username=username, event_id=newest_id)
-                else:
-                    logger.info("github.poll.user.first_run.no_events", username=username)
-            return 0
-
-        # No new events
+        # No events in time window
         if not events:
-            logger.info("github.poll.user.no_new_events", username=username)
+            logger.info("github.poll.user.no_events_in_window", username=username)
             return 0
 
         # Filter events by type
@@ -352,10 +339,6 @@ class GitHubPollingService:
                 logger.error(
                     "discord.post.user.error", username=username, error=str(e), exc_info=True
                 )
-
-        # Update state with newest event ID
-        newest_event_id = events[0]["id"]
-        await set_last_event_id_async(self.db, newest_event_id)
 
         total_events = (
             len(commits)
