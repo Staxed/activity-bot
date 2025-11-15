@@ -123,9 +123,11 @@ class GitHubPollingService:
 
         # Fetch up to 300 events (10 pages x 30 per_page)
         all_events: list[dict[str, Any]] = []
+        pages_fetched = 0
 
         for page in range(1, self.MAX_PAGES + 1):
             events = await self.client.fetch_user_events(username, page=page)
+            pages_fetched = page
 
             if not events:
                 # No more events available
@@ -167,7 +169,7 @@ class GitHubPollingService:
             username=username,
             total_fetched=len(all_events),
             within_window=len(filtered_events),
-            pages_fetched=min(page, self.MAX_PAGES),
+            pages_fetched=pages_fetched,
         )
 
         return filtered_events
@@ -317,7 +319,49 @@ class GitHubPollingService:
             self.db.insert_forks(forks),
         )
 
-        # Post all events to Discord
+        # Filter to only unposted events before posting to Discord
+        # This prevents duplicate Discord posts when events are seen in multiple poll cycles
+        # within the 12-hour window
+        if commits:
+            unposted_shas = await self.db.get_unposted_commit_shas([c.sha for c in commits])
+            commits = [c for c in commits if c.sha in unposted_shas]
+
+        if prs:
+            unposted_prs = await self.db.get_unposted_prs(max_age_hours=12)
+            unposted_pr_ids = {pr.event_id for pr in unposted_prs}
+            prs = [pr for pr in prs if pr.event_id in unposted_pr_ids]
+
+        if issues:
+            unposted_issues = await self.db.get_unposted_issues(max_age_hours=12)
+            unposted_issue_ids = {i.event_id for i in unposted_issues}
+            issues = [i for i in issues if i.event_id in unposted_issue_ids]
+
+        if releases:
+            unposted_releases = await self.db.get_unposted_releases(max_age_hours=12)
+            unposted_release_ids = {r.event_id for r in unposted_releases}
+            releases = [r for r in releases if r.event_id in unposted_release_ids]
+
+        if pr_reviews:
+            unposted_reviews = await self.db.get_unposted_reviews(max_age_hours=12)
+            unposted_review_ids = {r.event_id for r in unposted_reviews}
+            pr_reviews = [r for r in pr_reviews if r.event_id in unposted_review_ids]
+
+        if creations:
+            unposted_creations = await self.db.get_unposted_creations(max_age_hours=12)
+            unposted_creation_ids = {c.event_id for c in unposted_creations}
+            creations = [c for c in creations if c.event_id in unposted_creation_ids]
+
+        if deletions:
+            unposted_deletions = await self.db.get_unposted_deletions(max_age_hours=12)
+            unposted_deletion_ids = {d.event_id for d in unposted_deletions}
+            deletions = [d for d in deletions if d.event_id in unposted_deletion_ids]
+
+        if forks:
+            unposted_forks = await self.db.get_unposted_forks(max_age_hours=12)
+            unposted_fork_ids = {f.event_id for f in unposted_forks}
+            forks = [f for f in forks if f.event_id in unposted_fork_ids]
+
+        # Post all unposted events to Discord
         if self.discord_poster:
             try:
                 await self.discord_poster.post_all_events(
