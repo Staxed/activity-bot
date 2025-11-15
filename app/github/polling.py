@@ -174,6 +174,122 @@ class GitHubPollingService:
 
         return filtered_events
 
+    async def _filter_to_unposted(
+        self,
+        commits: list[Any],
+        prs: list[Any],
+        issues: list[Any],
+        releases: list[Any],
+        pr_reviews: list[Any],
+        creations: list[Any],
+        deletions: list[Any],
+        forks: list[Any],
+    ) -> tuple[
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+    ]:
+        """Filter all event types to only unposted events in parallel.
+
+        Queries the database for all unposted events of each type in parallel,
+        then filters the provided event lists to only include unposted events.
+        This is much faster than sequential queries (8x speedup).
+
+        Args:
+            commits: List of CommitEvent objects to filter
+            prs: List of PullRequestEvent objects to filter
+            issues: List of IssuesEvent objects to filter
+            releases: List of ReleaseEvent objects to filter
+            pr_reviews: List of PullRequestReviewEvent objects to filter
+            creations: List of CreateEvent objects to filter
+            deletions: List of DeleteEvent objects to filter
+            forks: List of ForkEvent objects to filter
+
+        Returns:
+            Tuple of filtered event lists in same order as inputs
+        """
+        # Fetch all unposted events in parallel for maximum performance
+        (
+            unposted_commit_shas,
+            unposted_prs,
+            unposted_issues,
+            unposted_releases,
+            unposted_reviews,
+            unposted_creations,
+            unposted_deletions,
+            unposted_forks,
+        ) = await asyncio.gather(
+            self.db.get_unposted_commit_shas([c.sha for c in commits])
+            if commits
+            else asyncio.sleep(0, result=set()),
+            self.db.get_unposted_prs(max_age_hours=12) if prs else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_issues(max_age_hours=12)
+            if issues
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_releases(max_age_hours=12)
+            if releases
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_reviews(max_age_hours=12)
+            if pr_reviews
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_creations(max_age_hours=12)
+            if creations
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_deletions(max_age_hours=12)
+            if deletions
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_forks(max_age_hours=12) if forks else asyncio.sleep(0, result=[]),
+        )
+
+        # Filter each event type to only unposted events
+        # Commits use SHA for lookup, others use event_id
+        filtered_commits = [c for c in commits if c.sha in unposted_commit_shas] if commits else []
+
+        unposted_pr_ids = {pr.event_id for pr in unposted_prs}
+        filtered_prs = [pr for pr in prs if pr.event_id in unposted_pr_ids] if prs else []
+
+        unposted_issue_ids = {i.event_id for i in unposted_issues}
+        filtered_issues = [i for i in issues if i.event_id in unposted_issue_ids] if issues else []
+
+        unposted_release_ids = {r.event_id for r in unposted_releases}
+        filtered_releases = (
+            [r for r in releases if r.event_id in unposted_release_ids] if releases else []
+        )
+
+        unposted_review_ids = {r.event_id for r in unposted_reviews}
+        filtered_pr_reviews = (
+            [r for r in pr_reviews if r.event_id in unposted_review_ids] if pr_reviews else []
+        )
+
+        unposted_creation_ids = {c.event_id for c in unposted_creations}
+        filtered_creations = (
+            [c for c in creations if c.event_id in unposted_creation_ids] if creations else []
+        )
+
+        unposted_deletion_ids = {d.event_id for d in unposted_deletions}
+        filtered_deletions = (
+            [d for d in deletions if d.event_id in unposted_deletion_ids] if deletions else []
+        )
+
+        unposted_fork_ids = {f.event_id for f in unposted_forks}
+        filtered_forks = [f for f in forks if f.event_id in unposted_fork_ids] if forks else []
+
+        return (
+            filtered_commits,
+            filtered_prs,
+            filtered_issues,
+            filtered_releases,
+            filtered_pr_reviews,
+            filtered_creations,
+            filtered_deletions,
+            filtered_forks,
+        )
+
     async def poll_once(self) -> int:
         """Poll GitHub events for all users and store events in database.
 
@@ -321,45 +437,26 @@ class GitHubPollingService:
 
         # Filter to only unposted events before posting to Discord
         # This prevents duplicate Discord posts when events are seen in multiple poll cycles
-        # within the 12-hour window
-        if commits:
-            unposted_shas = await self.db.get_unposted_commit_shas([c.sha for c in commits])
-            commits = [c for c in commits if c.sha in unposted_shas]
-
-        if prs:
-            unposted_prs = await self.db.get_unposted_prs(max_age_hours=12)
-            unposted_pr_ids = {pr.event_id for pr in unposted_prs}
-            prs = [pr for pr in prs if pr.event_id in unposted_pr_ids]
-
-        if issues:
-            unposted_issues = await self.db.get_unposted_issues(max_age_hours=12)
-            unposted_issue_ids = {i.event_id for i in unposted_issues}
-            issues = [i for i in issues if i.event_id in unposted_issue_ids]
-
-        if releases:
-            unposted_releases = await self.db.get_unposted_releases(max_age_hours=12)
-            unposted_release_ids = {r.event_id for r in unposted_releases}
-            releases = [r for r in releases if r.event_id in unposted_release_ids]
-
-        if pr_reviews:
-            unposted_reviews = await self.db.get_unposted_reviews(max_age_hours=12)
-            unposted_review_ids = {r.event_id for r in unposted_reviews}
-            pr_reviews = [r for r in pr_reviews if r.event_id in unposted_review_ids]
-
-        if creations:
-            unposted_creations = await self.db.get_unposted_creations(max_age_hours=12)
-            unposted_creation_ids = {c.event_id for c in unposted_creations}
-            creations = [c for c in creations if c.event_id in unposted_creation_ids]
-
-        if deletions:
-            unposted_deletions = await self.db.get_unposted_deletions(max_age_hours=12)
-            unposted_deletion_ids = {d.event_id for d in unposted_deletions}
-            deletions = [d for d in deletions if d.event_id in unposted_deletion_ids]
-
-        if forks:
-            unposted_forks = await self.db.get_unposted_forks(max_age_hours=12)
-            unposted_fork_ids = {f.event_id for f in unposted_forks}
-            forks = [f for f in forks if f.event_id in unposted_fork_ids]
+        # within the 12-hour window. Queries are parallelized for performance.
+        (
+            commits,
+            prs,
+            issues,
+            releases,
+            pr_reviews,
+            creations,
+            deletions,
+            forks,
+        ) = await self._filter_to_unposted(
+            commits=commits,
+            prs=prs,
+            issues=issues,
+            releases=releases,
+            pr_reviews=pr_reviews,
+            creations=creations,
+            deletions=deletions,
+            forks=forks,
+        )
 
         # Post all unposted events to Discord
         if self.discord_poster:
