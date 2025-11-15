@@ -1,7 +1,7 @@
 """GitHub event polling service with failure tracking."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import Settings
@@ -17,7 +17,6 @@ from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
 from app.github.events import (
     filter_events_by_type,
-    filter_push_events,
     parse_commits_from_events,
     parse_creations_from_events,
     parse_deletions_from_events,
@@ -114,7 +113,7 @@ class GitHubPollingService:
             List of events within 12-hour window, newest first
         """
         # Calculate 12-hour cutoff time
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=12)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=12)
 
         logger.info(
             "github.fetch_recent.started",
@@ -122,7 +121,7 @@ class GitHubPollingService:
             cutoff_time=cutoff_time.isoformat(),
         )
 
-        # Fetch up to 300 events (10 pages × 30 per_page)
+        # Fetch up to 300 events (10 pages x 30 per_page)
         all_events: list[dict[str, Any]] = []
 
         for page in range(1, self.MAX_PAGES + 1):
@@ -272,7 +271,7 @@ class GitHubPollingService:
         ignored_repos = self.settings.get_user_ignored_repos(username)
 
         # Apply repository filtering to all event types
-        def filter_by_repo(event: Any) -> bool:
+        def filter_by_repo(event: Any) -> bool:  # noqa: ANN401
             repo_full_name = f"{event.repo_owner}/{event.repo_name}"
             return should_track_repo(repo_full_name, ignored_repos)
 
