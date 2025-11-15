@@ -1,12 +1,13 @@
 """GitHub event polling service with failure tracking."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.core.config import Settings
 from app.core.database import DatabaseClient
 from app.core.logging import get_logger
-from app.core.state import StateManager, get_last_event_id_async, set_last_event_id_async
+from app.core.state import StateManager
 from app.github.action_filter import (
     filter_issue_actions,
     filter_pr_actions,
@@ -16,7 +17,6 @@ from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
 from app.github.events import (
     filter_events_by_type,
-    filter_push_events,
     parse_commits_from_events,
     parse_creations_from_events,
     parse_deletions_from_events,
@@ -36,14 +36,30 @@ logger = get_logger(__name__)
 
 
 class GitHubPollingService:
-    """Service for polling GitHub events with failure tracking.
+    """Service for polling GitHub events with time-window-based deduplication.
 
-    Polls GitHub Events API at regular intervals, tracks processed events,
-    and raises GitHubPollingError after consecutive failures exceed threshold.
+    Uses a 12-hour time window approach instead of state-based tracking to fix
+    the critical bug where rapid event sequences (PR creation, commits, merges)
+    were missed due to GitHub API indexing delays.
+
+    How it works:
+    1. Every 15 minutes (configurable), fetch up to 300 events (10 pages)
+    2. Filter events to those within last 12 hours
+    3. Insert all filtered events into database (ON CONFLICT deduplication)
+    4. Post only events marked as unposted to Discord
+    5. Mark posted events to prevent duplicate Discord notifications
+
+    This approach ensures events are seen up to 48 times (12 hours / 15 min)
+    before aging out, providing high tolerance for GitHub API inconsistencies.
+
+    Note:
+    - state parameter kept for backward compatibility but not used
+    - Database deduplication via ON CONFLICT (event_id) DO NOTHING is critical
+    - Events may be fetched multiple times but only posted once to Discord
 
     Attributes:
         FAILURE_THRESHOLD: Number of consecutive failures before raising error
-        MAX_PAGES: Maximum number of pages to fetch when looking for last event
+        MAX_PAGES: Maximum number of pages to fetch (10 pages = 300 events)
     """
 
     FAILURE_THRESHOLD = 2
@@ -62,10 +78,10 @@ class GitHubPollingService:
 
         Args:
             client: GitHub API client instance
-            state: State manager for persistence
+            state: State manager (kept for backward compatibility, not used)
             settings: Application settings
             usernames: List of GitHub usernames to poll events for
-            db: Database client for event storage
+            db: Database client for event storage and deduplication
             discord_poster: Optional Discord poster for event notifications
         """
         self.client = client
@@ -78,81 +94,201 @@ class GitHubPollingService:
         self.running = False
         self.task: asyncio.Task[None] | None = None
 
-    async def _fetch_events_until_last_id(
-        self, username: str, last_event_id: str | None
-    ) -> list[dict[str, Any]]:
-        """Fetch events from GitHub API until last_event_id is found.
+    async def _fetch_recent_events(self, username: str) -> list[dict[str, Any]]:
+        """Fetch GitHub events from last 12 hours.
+
+        Fetches up to 300 events (10 pages) and filters to those within
+        the last 12 hours. Relies on database deduplication via ON CONFLICT.
+
+        This approach fixes the bug where rapid event sequences (e.g., create branch,
+        commit, open PR, merge) were missed due to GitHub API indexing delays.
+        By fetching a wide time window and relying on database deduplication,
+        we ensure all events are eventually captured even if they appear in the
+        API response after subsequent polls.
 
         Args:
             username: GitHub username to fetch events for
-            last_event_id: Last processed event ID (None on first run)
 
         Returns:
-            List of new events (empty on first run or if last_event_id not found)
-
-        Note:
-            - First run (last_event_id is None): Fetches page 1 only, returns []
-            - Subsequent runs: Fetches pages until last_event_id found
-            - Logs warning if last_event_id never found (>300 events missed)
+            List of events within 12-hour window, newest first
         """
-        # First run: fetch latest events but don't process
-        if last_event_id is None:
-            await self.client.fetch_user_events(username, page=1)
-            return []
+        # Calculate 12-hour cutoff time
+        cutoff_time = datetime.now(UTC) - timedelta(hours=12)
 
-        collected_events: list[dict[str, Any]] = []
-        last_event_id_int = int(last_event_id)
+        logger.info(
+            "github.fetch_recent.started",
+            username=username,
+            cutoff_time=cutoff_time.isoformat(),
+        )
+
+        # Fetch up to 300 events (10 pages x 30 per_page)
+        all_events: list[dict[str, Any]] = []
+        pages_fetched = 0
 
         for page in range(1, self.MAX_PAGES + 1):
             events = await self.client.fetch_user_events(username, page=page)
+            pages_fetched = page
 
             if not events:
                 # No more events available
                 break
 
-            # Collect events newer than last_event_id
-            for event in events:
-                event_id = event.get("id")
-                if not event_id:
-                    logger.warning(
-                        "github.poll.event_missing_id",
-                        page=page,
-                        event_type=event.get("type", "Unknown"),
-                    )
-                    continue
+            all_events.extend(events)
 
-                try:
-                    event_id_int = int(event_id)
-                except (ValueError, TypeError):
-                    logger.warning(
-                        "github.poll.invalid_event_id",
-                        event_id=event_id,
-                        page=page,
-                    )
-                    continue
+        # Filter events to 12-hour window
+        filtered_events: list[dict[str, Any]] = []
 
-                if event_id_int > last_event_id_int:
-                    collected_events.append(event)
-                else:
-                    # Found the last processed event, stop here
-                    logger.info(
-                        "github.poll.found_last_event",
-                        last_event_id=last_event_id,
-                        page=page,
-                        new_events=len(collected_events),
-                    )
-                    return collected_events
+        for event in all_events:
+            # Parse event timestamp
+            created_at_str = event.get("created_at")
+            if not created_at_str:
+                logger.warning(
+                    "github.fetch_recent.missing_timestamp",
+                    event_id=event.get("id"),
+                    event_type=event.get("type"),
+                )
+                continue
 
-        # If we get here, we never found last_event_id
-        if collected_events:
-            logger.warning(
-                "github.poll.missed_events",
-                last_event_id=last_event_id,
-                pages_fetched=self.MAX_PAGES,
-                collected=len(collected_events),
-            )
+            try:
+                # GitHub timestamps are in ISO 8601 format with 'Z' suffix
+                event_time = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
 
-        return collected_events
+                if event_time >= cutoff_time:
+                    filtered_events.append(event)
+            except (ValueError, AttributeError) as e:
+                logger.warning(
+                    "github.fetch_recent.invalid_timestamp",
+                    event_id=event.get("id"),
+                    timestamp=created_at_str,
+                    error=str(e),
+                )
+                continue
+
+        logger.info(
+            "github.fetch_recent.complete",
+            username=username,
+            total_fetched=len(all_events),
+            within_window=len(filtered_events),
+            pages_fetched=pages_fetched,
+        )
+
+        return filtered_events
+
+    async def _filter_to_unposted(
+        self,
+        commits: list[Any],
+        prs: list[Any],
+        issues: list[Any],
+        releases: list[Any],
+        pr_reviews: list[Any],
+        creations: list[Any],
+        deletions: list[Any],
+        forks: list[Any],
+    ) -> tuple[
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+    ]:
+        """Filter all event types to only unposted events in parallel.
+
+        Queries the database for all unposted events of each type in parallel,
+        then filters the provided event lists to only include unposted events.
+        This is much faster than sequential queries (8x speedup).
+
+        Args:
+            commits: List of CommitEvent objects to filter
+            prs: List of PullRequestEvent objects to filter
+            issues: List of IssuesEvent objects to filter
+            releases: List of ReleaseEvent objects to filter
+            pr_reviews: List of PullRequestReviewEvent objects to filter
+            creations: List of CreateEvent objects to filter
+            deletions: List of DeleteEvent objects to filter
+            forks: List of ForkEvent objects to filter
+
+        Returns:
+            Tuple of filtered event lists in same order as inputs
+        """
+        # Fetch all unposted events in parallel for maximum performance
+        (
+            unposted_commit_shas,
+            unposted_prs,
+            unposted_issues,
+            unposted_releases,
+            unposted_reviews,
+            unposted_creations,
+            unposted_deletions,
+            unposted_forks,
+        ) = await asyncio.gather(
+            self.db.get_unposted_commit_shas([c.sha for c in commits])
+            if commits
+            else asyncio.sleep(0, result=set()),
+            self.db.get_unposted_prs(max_age_hours=12) if prs else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_issues(max_age_hours=12)
+            if issues
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_releases(max_age_hours=12)
+            if releases
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_reviews(max_age_hours=12)
+            if pr_reviews
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_creations(max_age_hours=12)
+            if creations
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_deletions(max_age_hours=12)
+            if deletions
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_forks(max_age_hours=12) if forks else asyncio.sleep(0, result=[]),
+        )
+
+        # Filter each event type to only unposted events
+        # Commits use SHA for lookup, others use event_id
+        filtered_commits = [c for c in commits if c.sha in unposted_commit_shas] if commits else []
+
+        unposted_pr_ids = {pr.event_id for pr in unposted_prs}
+        filtered_prs = [pr for pr in prs if pr.event_id in unposted_pr_ids] if prs else []
+
+        unposted_issue_ids = {i.event_id for i in unposted_issues}
+        filtered_issues = [i for i in issues if i.event_id in unposted_issue_ids] if issues else []
+
+        unposted_release_ids = {r.event_id for r in unposted_releases}
+        filtered_releases = (
+            [r for r in releases if r.event_id in unposted_release_ids] if releases else []
+        )
+
+        unposted_review_ids = {r.event_id for r in unposted_reviews}
+        filtered_pr_reviews = (
+            [r for r in pr_reviews if r.event_id in unposted_review_ids] if pr_reviews else []
+        )
+
+        unposted_creation_ids = {c.event_id for c in unposted_creations}
+        filtered_creations = (
+            [c for c in creations if c.event_id in unposted_creation_ids] if creations else []
+        )
+
+        unposted_deletion_ids = {d.event_id for d in unposted_deletions}
+        filtered_deletions = (
+            [d for d in deletions if d.event_id in unposted_deletion_ids] if deletions else []
+        )
+
+        unposted_fork_ids = {f.event_id for f in unposted_forks}
+        filtered_forks = [f for f in forks if f.event_id in unposted_fork_ids] if forks else []
+
+        return (
+            filtered_commits,
+            filtered_prs,
+            filtered_issues,
+            filtered_releases,
+            filtered_pr_reviews,
+            filtered_creations,
+            filtered_deletions,
+            filtered_forks,
+        )
 
     async def poll_once(self) -> int:
         """Poll GitHub events for all users and store events in database.
@@ -198,7 +334,11 @@ class GitHubPollingService:
             return 0
 
     async def _poll_user(self, username: str) -> int:
-        """Poll GitHub events for a single user.
+        """Poll GitHub events for a single user using time-window approach.
+
+        Fetches all events from last 12 hours and relies on database deduplication
+        to prevent duplicate processing. This fixes the bug where rapid event
+        sequences were missed due to GitHub API indexing delays.
 
         Args:
             username: GitHub username to poll
@@ -206,38 +346,18 @@ class GitHubPollingService:
         Returns:
             Number of events processed for this user
         """
-        # Get last event ID from database (shared across all users)
-        last_event_id = await get_last_event_id_async(self.db)
-
         logger.info(
             "github.poll.user.started",
             username=username,
-            last_event_id=last_event_id,
+            window_hours=12,
         )
 
-        # Fetch events since last poll
-        events = await self._fetch_events_until_last_id(username, last_event_id)
+        # Fetch events from last 12 hours
+        events = await self._fetch_recent_events(username)
 
-        # First run: store newest event ID without processing
-        if last_event_id is None:
-            if events:
-                newest_id = events[0]["id"]
-                await set_last_event_id_async(self.db, newest_id)
-                logger.info("github.poll.user.first_run", username=username, event_id=newest_id)
-            else:
-                # No events at all, fetch first page to get latest ID
-                first_page = await self.client.fetch_user_events(username, page=1)
-                if first_page:
-                    newest_id = first_page[0]["id"]
-                    await set_last_event_id_async(self.db, newest_id)
-                    logger.info("github.poll.user.first_run", username=username, event_id=newest_id)
-                else:
-                    logger.info("github.poll.user.first_run.no_events", username=username)
-            return 0
-
-        # No new events
+        # No events in time window
         if not events:
-            logger.info("github.poll.user.no_new_events", username=username)
+            logger.info("github.poll.user.no_events_in_window", username=username)
             return 0
 
         # Filter events by type
@@ -269,7 +389,7 @@ class GitHubPollingService:
         ignored_repos = self.settings.get_user_ignored_repos(username)
 
         # Apply repository filtering to all event types
-        def filter_by_repo(event: Any) -> bool:
+        def filter_by_repo(event: Any) -> bool:  # noqa: ANN401
             repo_full_name = f"{event.repo_owner}/{event.repo_name}"
             return should_track_repo(repo_full_name, ignored_repos)
 
@@ -315,7 +435,30 @@ class GitHubPollingService:
             self.db.insert_forks(forks),
         )
 
-        # Post all events to Discord
+        # Filter to only unposted events before posting to Discord
+        # This prevents duplicate Discord posts when events are seen in multiple poll cycles
+        # within the 12-hour window. Queries are parallelized for performance.
+        (
+            commits,
+            prs,
+            issues,
+            releases,
+            pr_reviews,
+            creations,
+            deletions,
+            forks,
+        ) = await self._filter_to_unposted(
+            commits=commits,
+            prs=prs,
+            issues=issues,
+            releases=releases,
+            pr_reviews=pr_reviews,
+            creations=creations,
+            deletions=deletions,
+            forks=forks,
+        )
+
+        # Post all unposted events to Discord
         if self.discord_poster:
             try:
                 await self.discord_poster.post_all_events(
@@ -352,10 +495,6 @@ class GitHubPollingService:
                 logger.error(
                     "discord.post.user.error", username=username, error=str(e), exc_info=True
                 )
-
-        # Update state with newest event ID
-        newest_event_id = events[0]["id"]
-        await set_last_event_id_async(self.db, newest_event_id)
 
         total_events = (
             len(commits)
