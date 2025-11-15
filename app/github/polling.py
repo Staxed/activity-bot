@@ -37,14 +37,30 @@ logger = get_logger(__name__)
 
 
 class GitHubPollingService:
-    """Service for polling GitHub events with failure tracking.
+    """Service for polling GitHub events with time-window-based deduplication.
 
-    Polls GitHub Events API at regular intervals, tracks processed events,
-    and raises GitHubPollingError after consecutive failures exceed threshold.
+    Uses a 12-hour time window approach instead of state-based tracking to fix
+    the critical bug where rapid event sequences (PR creation, commits, merges)
+    were missed due to GitHub API indexing delays.
+
+    How it works:
+    1. Every 15 minutes (configurable), fetch up to 300 events (10 pages)
+    2. Filter events to those within last 12 hours
+    3. Insert all filtered events into database (ON CONFLICT deduplication)
+    4. Post only events marked as unposted to Discord
+    5. Mark posted events to prevent duplicate Discord notifications
+
+    This approach ensures events are seen up to 48 times (12 hours / 15 min)
+    before aging out, providing high tolerance for GitHub API inconsistencies.
+
+    Note:
+    - state parameter kept for backward compatibility but not used
+    - Database deduplication via ON CONFLICT (event_id) DO NOTHING is critical
+    - Events may be fetched multiple times but only posted once to Discord
 
     Attributes:
         FAILURE_THRESHOLD: Number of consecutive failures before raising error
-        MAX_PAGES: Maximum number of pages to fetch when looking for last event
+        MAX_PAGES: Maximum number of pages to fetch (10 pages = 300 events)
     """
 
     FAILURE_THRESHOLD = 2
@@ -63,10 +79,10 @@ class GitHubPollingService:
 
         Args:
             client: GitHub API client instance
-            state: State manager for persistence
+            state: State manager (kept for backward compatibility, not used)
             settings: Application settings
             usernames: List of GitHub usernames to poll events for
-            db: Database client for event storage
+            db: Database client for event storage and deduplication
             discord_poster: Optional Discord poster for event notifications
         """
         self.client = client
