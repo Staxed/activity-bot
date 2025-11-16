@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
-from app.shared.exceptions import DatabaseError
 from app.stats.calculator import calculate_user_stats
 from app.stats.models import UserStats
 
@@ -18,7 +17,7 @@ logger = get_logger(__name__)
 class StatsService:
     """Stats service with automatic cache refresh."""
 
-    def __init__(self, db_client: "DatabaseClient", refresh_interval_minutes: int = 60):
+    def __init__(self, db_client: "DatabaseClient", refresh_interval_minutes: int = 60) -> None:
         """Initialize stats service.
 
         Args:
@@ -73,8 +72,10 @@ class StatsService:
                     if username in self._stats_cache:
                         new_cache[username] = self._stats_cache[username]
 
+            from datetime import UTC
+
             self._stats_cache = new_cache
-            self._last_refresh = datetime.now()
+            self._last_refresh = datetime.now(UTC).replace(tzinfo=None)
             logger.info("stats.cache.refreshed", users_count=len(self._stats_cache))
 
         except Exception as e:

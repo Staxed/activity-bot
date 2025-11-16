@@ -109,9 +109,7 @@ class TimePatternStats(BaseModel):
     peak_day: int | None = Field(None, description="Peak day of week (0=Mon)")
     night_commits: int = Field(0, description="Night commits (10pm-6am)")
     early_commits: int = Field(0, description="Early commits (5am-9am)")
-    commits_by_hour: dict[int, int] = Field(
-        default_factory=dict, description="Commits per hour"
-    )
+    commits_by_hour: dict[int, int] = Field(default_factory=dict, description="Commits per hour")
     commits_by_day: dict[int, int] = Field(default_factory=dict, description="Commits per day")
 
 

@@ -1,7 +1,7 @@
 """Streak calculation functions for daily/weekly/monthly/yearly streaks."""
 
 import asyncio
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import asyncpg
@@ -49,7 +49,7 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
 
             activity_dates = [row["activity_date"] for row in rows]
             last_date = activity_dates[0]
-            today = date.today()
+            today = datetime.now(UTC).date()
 
             # Check if streak is still active (last commit today or yesterday - grace period)
             if last_date < today - timedelta(days=1):
@@ -118,12 +118,15 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
             rows = await conn.fetch(GET_WEEKLY_ACTIVITY, username)
             if not rows:
                 return StreakInfo(
-                    streak_type="weekly", current_streak=0, longest_streak=0, last_activity_date=None
+                    streak_type="weekly",
+                    current_streak=0,
+                    longest_streak=0,
+                    last_activity_date=None,
                 )
 
             week_starts = [row["week_start"] for row in rows]
             last_week = week_starts[0]
-            today = date.today()
+            today = datetime.now(UTC).date()
             current_week_start = today - timedelta(days=today.weekday())
 
             # Check if streak is active (activity in current or previous week)
@@ -198,12 +201,14 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
 
             month_starts = [row["month_start"] for row in rows]
             last_month = month_starts[0]
-            today = date.today()
+            today = datetime.now(UTC).date()
             current_month_start = today.replace(day=1)
 
             # Previous month
             if current_month_start.month == 1:
-                prev_month = current_month_start.replace(year=current_month_start.year - 1, month=12)
+                prev_month = current_month_start.replace(
+                    year=current_month_start.year - 1, month=12
+                )
             else:
                 prev_month = current_month_start.replace(month=current_month_start.month - 1)
 
@@ -282,12 +287,15 @@ async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> Streak
             rows = await conn.fetch(GET_YEARLY_ACTIVITY, username)
             if not rows:
                 return StreakInfo(
-                    streak_type="yearly", current_streak=0, longest_streak=0, last_activity_date=None
+                    streak_type="yearly",
+                    current_streak=0,
+                    longest_streak=0,
+                    last_activity_date=None,
                 )
 
             years = [row["year"] for row in rows]
             last_year = years[0]
-            current_year = date.today().year
+            current_year = datetime.now(UTC).date().year
 
             # Check if streak is active
             if last_year < current_year - 1:

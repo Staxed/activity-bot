@@ -13,7 +13,6 @@ from app.stats.queries import (
     GET_COMMITS_BY_HOUR,
     GET_MOST_ACTIVE_REPO,
     GET_REPO_STATS,
-    GET_USER_TIME_WINDOW_STATS,
     GET_USER_TOTALS,
 )
 
@@ -48,7 +47,9 @@ async def calculate_user_stats(db: "DatabaseClient", username: str) -> UserStats
                 return UserStats(username=username)
 
             # Get time window stats (today, this week, this month)
-            now = datetime.now()
+            from datetime import UTC
+
+            now = datetime.now(UTC).replace(tzinfo=None)
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             week_start = today_start - timedelta(days=today_start.weekday())
             month_start = today_start.replace(day=1)

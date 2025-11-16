@@ -199,9 +199,7 @@ async def check_daily_achievements(
             return earned
 
     except asyncpg.PostgresError as e:
-        logger.error(
-            "achievements.daily.failed", username=username, error=str(e), exc_info=True
-        )
+        logger.error("achievements.daily.failed", username=username, error=str(e), exc_info=True)
         raise DatabaseError(f"Failed to check daily achievements: {e}") from e
 
 
@@ -240,9 +238,7 @@ async def record_achievement(
             )
 
     except asyncpg.PostgresError as e:
-        logger.error(
-            "achievement.record.failed", username=username, error=str(e), exc_info=True
-        )
+        logger.error("achievement.record.failed", username=username, error=str(e), exc_info=True)
         raise DatabaseError(f"Failed to record achievement: {e}") from e
 
 
