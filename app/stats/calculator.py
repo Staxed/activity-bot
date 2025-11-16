@@ -44,7 +44,7 @@ async def calculate_user_stats(db: "DatabaseClient", username: str) -> UserStats
             totals_row = await conn.fetchrow(GET_USER_TOTALS, username)
             if not totals_row:
                 # User has no activity
-                return UserStats(username=username)
+                return UserStats(username=username)  # type: ignore[call-arg]
 
             # Get time window stats (today, this week, this month)
             from datetime import UTC
@@ -185,8 +185,8 @@ async def calculate_time_patterns(db: "DatabaseClient", username: str) -> TimePa
                 commits_by_day[dow_monday] = row["count"]
 
             # Find peak hour and day
-            peak_hour = max(commits_by_hour, key=commits_by_hour.get) if commits_by_hour else None
-            peak_day = max(commits_by_day, key=commits_by_day.get) if commits_by_day else None
+            peak_hour = max(commits_by_hour, key=commits_by_hour.get) if commits_by_hour else None  # type: ignore[arg-type]
+            peak_day = max(commits_by_day, key=commits_by_day.get) if commits_by_day else None  # type: ignore[arg-type]
 
             # Count night commits (10pm-6am) and early commits (5am-9am)
             night_commits = sum(
