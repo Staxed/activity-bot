@@ -1,6 +1,5 @@
 """Discord embed builders for GitHub event types."""
 
-
 import discord
 
 from app.discord.event_colors import (

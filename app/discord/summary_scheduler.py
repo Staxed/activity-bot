@@ -1,7 +1,7 @@
 """Scheduler for automatic daily/weekly/monthly summary posts."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from app.core.config import get_settings
@@ -92,7 +92,9 @@ class SummaryScheduler:
         try:
             tz = pytz.timezone(self.settings.stats_timezone)
         except Exception as e:
-            logger.error("summary.timezone.invalid", timezone=self.settings.stats_timezone, error=str(e))
+            logger.error(
+                "summary.timezone.invalid", timezone=self.settings.stats_timezone, error=str(e)
+            )
             tz = pytz.UTC
 
         now = datetime.now(tz)

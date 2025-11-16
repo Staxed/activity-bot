@@ -1,6 +1,5 @@
 """Discord embed creation for stats and achievements."""
 
-
 import discord
 
 from app.discord.event_colors import (

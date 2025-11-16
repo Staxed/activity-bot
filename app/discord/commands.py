@@ -179,9 +179,7 @@ class StatsCommands(app_commands.Group, name="activity"):
 
         except Exception as e:
             logger.error("discord.command.insights.failed", error=str(e), exc_info=True)
-            await interaction.followup.send(
-                f"❌ Failed to fetch insights: {e!s}", ephemeral=True
-            )
+            await interaction.followup.send(f"❌ Failed to fetch insights: {e!s}", ephemeral=True)
 
 
 def setup_commands(tree: app_commands.CommandTree, db_client: "DatabaseClient") -> None:

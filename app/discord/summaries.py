@@ -202,7 +202,10 @@ async def generate_weekly_summary(
     # Streak info
     if daily_streak:
         streak_text = f"🔥 {daily_streak.current_streak} day streak"
-        if daily_streak.current_streak == daily_streak.longest_streak and daily_streak.current_streak > 0:
+        if (
+            daily_streak.current_streak == daily_streak.longest_streak
+            and daily_streak.current_streak > 0
+        ):
             streak_text += " (Personal best!)"
         embed.add_field(name="Streak", value=streak_text, inline=True)
 
@@ -244,9 +247,13 @@ async def generate_monthly_summary(
     if month_start is None:
         now = datetime.now(UTC)
         if now.month == 1:
-            month_start = now.replace(year=now.year - 1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0)
+            month_start = now.replace(
+                year=now.year - 1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
         else:
-            month_start = now.replace(month=now.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            month_start = now.replace(
+                month=now.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
 
     # Calculate next month start
     if month_start.month == 12:
@@ -345,7 +352,9 @@ async def generate_monthly_summary(
     )
 
     # Streak and patterns
-    streak_text = f"🔥 {monthly_streak.current_streak} month streak" if monthly_streak else "No streak"
+    streak_text = (
+        f"🔥 {monthly_streak.current_streak} month streak" if monthly_streak else "No streak"
+    )
     if patterns.peak_hour is not None:
         hour_12 = patterns.peak_hour % 12 or 12
         am_pm = "AM" if patterns.peak_hour < 12 else "PM"
