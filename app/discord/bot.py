@@ -3,6 +3,7 @@
 from typing import Any
 
 import discord
+from discord import app_commands
 
 from app.core.logging import get_logger
 from app.shared.exceptions import DiscordAPIError
@@ -17,16 +18,19 @@ class DiscordBot:
     Follows the async context manager pattern from github/client.py.
     """
 
-    def __init__(self, token: str, channel_id: int) -> None:
+    def __init__(self, token: str, channel_id: int, enable_commands: bool = True) -> None:
         """Initialize Discord bot with token and target channel.
 
         Args:
             token: Discord bot token
             channel_id: Discord channel ID to post to
+            enable_commands: Whether to enable slash commands (default: True)
         """
         self.token = token
         self.channel_id = channel_id
+        self.enable_commands = enable_commands
         self.client: discord.Client | None = None
+        self.tree: app_commands.CommandTree | None = None
 
     async def __aenter__(self) -> "DiscordBot":
         """Context manager entry: create client and login.
@@ -70,6 +74,21 @@ class DiscordBot:
                 raise DiscordAPIError(f"Channel {self.channel_id} is not a text channel")
 
             logger.info("discord.bot.channel.validated", channel_id=self.channel_id)
+
+            # Setup slash commands if enabled
+            if self.enable_commands:
+                from app.discord.commands import setup_commands
+
+                self.tree = app_commands.CommandTree(self.client)
+                setup_commands(self.tree)
+
+                # Sync commands (this may take a few minutes to propagate)
+                try:
+                    synced = await self.tree.sync()
+                    logger.info("discord.commands.synced", count=len(synced))
+                except Exception as e:
+                    logger.error("discord.commands.sync.failed", error=str(e), exc_info=True)
+                    # Don't fail startup if command sync fails
 
         except discord.HTTPException as e:
             logger.error("discord.bot.login.failed", error=str(e), exc_info=True)
