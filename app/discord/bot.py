@@ -18,17 +18,25 @@ class DiscordBot:
     Follows the async context manager pattern from github/client.py.
     """
 
-    def __init__(self, token: str, channel_id: int, enable_commands: bool = True) -> None:
+    def __init__(
+        self,
+        token: str,
+        channel_id: int,
+        enable_commands: bool = True,
+        db_client: Any = None,
+    ) -> None:
         """Initialize Discord bot with token and target channel.
 
         Args:
             token: Discord bot token
             channel_id: Discord channel ID to post to
             enable_commands: Whether to enable slash commands (default: True)
+            db_client: Optional database client for slash commands
         """
         self.token = token
         self.channel_id = channel_id
         self.enable_commands = enable_commands
+        self.db_client = db_client
         self.client: discord.Client | None = None
         self.tree: app_commands.CommandTree | None = None
 
@@ -76,11 +84,11 @@ class DiscordBot:
             logger.info("discord.bot.channel.validated", channel_id=self.channel_id)
 
             # Setup slash commands if enabled
-            if self.enable_commands:
+            if self.enable_commands and self.db_client:
                 from app.discord.commands import setup_commands
 
                 self.tree = app_commands.CommandTree(self.client)
-                setup_commands(self.tree)
+                setup_commands(self.tree, self.db_client)
 
                 # Sync commands (this may take a few minutes to propagate)
                 try:

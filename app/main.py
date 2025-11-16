@@ -226,8 +226,13 @@ async def startup() -> None:
     # Initialize state manager
     state = StateManager(settings.state_file_path)
 
-    # Initialize Discord bot
-    discord_bot = DiscordBot(settings.discord_token, settings.discord_channel_id)
+    # Initialize Discord bot (with database client for slash commands)
+    discord_bot = DiscordBot(
+        settings.discord_token,
+        settings.discord_channel_id,
+        enable_commands=settings.enable_stats,  # Only enable commands if stats enabled
+        db_client=database_client,
+    )
     await discord_bot.__aenter__()
     logger.info("discord.bot.initialized")
 

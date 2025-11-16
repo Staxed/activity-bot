@@ -1,6 +1,6 @@
 """Discord slash commands for stats and achievements."""
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import discord
 from discord import app_commands
@@ -16,15 +16,23 @@ from app.stats.calculator import calculate_repo_stats, calculate_time_patterns
 from app.stats.service import get_stats_service
 from app.stats.streak_calculator import calculate_all_streaks
 
+if TYPE_CHECKING:
+    from app.core.database import DatabaseClient
+
 logger = get_logger(__name__)
 
 
 class StatsCommands(app_commands.Group, name="activity"):
     """Activity and stats slash commands."""
 
-    def __init__(self) -> None:
-        """Initialize stats commands group."""
+    def __init__(self, db_client: "DatabaseClient") -> None:
+        """Initialize stats commands group.
+
+        Args:
+            db_client: Database client for stats queries
+        """
         super().__init__()
+        self.db_client = db_client
 
     @app_commands.command(name="stats", description="View your development statistics")
     @app_commands.describe(
@@ -81,16 +89,11 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            from app.core.database import DatabaseClient
-
             # Get username
             target_username = username or interaction.user.name
 
-            # Calculate streaks (requires fresh calculation)
-            # TODO: Get db_client from bot instance
-            db_client = DatabaseClient()  # This needs to come from bot
-            async with db_client:
-                streaks = await calculate_all_streaks(db_client, target_username)
+            # Calculate streaks using bot's database client
+            streaks = await calculate_all_streaks(self.db_client, target_username)
 
             # Create embed
             embed = create_streak_embed(streaks)
@@ -127,14 +130,10 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            from app.core.database import DatabaseClient
-
             target_username = username or interaction.user.name
 
-            # Calculate repo stats
-            db_client = DatabaseClient()
-            async with db_client:
-                repos = await calculate_repo_stats(db_client, target_username, since=None)
+            # Calculate repo stats using bot's database client
+            repos = await calculate_repo_stats(self.db_client, target_username, since=None)
 
             # Create embed
             embed = create_repos_embed(repos, sort_by)
@@ -163,14 +162,10 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            from app.core.database import DatabaseClient
-
             target_username = username or interaction.user.name
 
-            # Calculate time patterns
-            db_client = DatabaseClient()
-            async with db_client:
-                patterns = await calculate_time_patterns(db_client, target_username)
+            # Calculate time patterns using bot's database client
+            patterns = await calculate_time_patterns(self.db_client, target_username)
 
             # Create embed
             embed = create_insights_embed(patterns)
@@ -189,13 +184,14 @@ class StatsCommands(app_commands.Group, name="activity"):
             )
 
 
-def setup_commands(tree: app_commands.CommandTree) -> None:
+def setup_commands(tree: app_commands.CommandTree, db_client: "DatabaseClient") -> None:
     """Setup stats commands on the command tree.
 
     Args:
         tree: Discord command tree to add commands to
+        db_client: Database client for stats queries
     """
-    stats_commands = StatsCommands()
+    stats_commands = StatsCommands(db_client)
     tree.add_command(stats_commands)
     logger.info(
         "discord.commands.setup",
