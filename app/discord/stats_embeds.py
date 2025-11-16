@@ -1,6 +1,5 @@
 """Discord embed creation for stats and achievements."""
 
-from datetime import datetime
 
 import discord
 
@@ -58,7 +57,9 @@ def create_stats_embed(stats: UserStats, timeframe: str = "week") -> discord.Emb
     ]
 
     if stats.most_active_repo:
-        lines.append(f"**Most Active Repo**: {stats.most_active_repo} ({stats.most_active_repo_count} events)")
+        lines.append(
+            f"**Most Active Repo**: {stats.most_active_repo} ({stats.most_active_repo_count} events)"
+        )
 
     if stats.last_activity:
         unix_ts = int(stats.last_activity.timestamp())
@@ -259,9 +260,13 @@ def create_insights_embed(patterns: TimePatternStats) -> discord.Embed:
         early_percent = (patterns.early_commits / total_commits) * 100
 
         if night_percent > 20:
-            lines.append(f"🦉 **Night Owl**: {patterns.night_commits} commits after 10pm ({night_percent:.0f}%)")
+            lines.append(
+                f"🦉 **Night Owl**: {patterns.night_commits} commits after 10pm ({night_percent:.0f}%)"
+            )
         if early_percent > 15:
-            lines.append(f"🐦 **Early Bird**: {patterns.early_commits} commits before 9am ({early_percent:.0f}%)")
+            lines.append(
+                f"🐦 **Early Bird**: {patterns.early_commits} commits before 9am ({early_percent:.0f}%)"
+            )
 
     embed.description = "\n".join(lines) if lines else "Not enough data yet!"
 

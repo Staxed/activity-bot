@@ -149,7 +149,7 @@ class StateManager:
         logger.info("state.event_id.updated", event_id=event_id)
 
 
-async def get_last_event_id_async(db: "DatabaseClient") -> str | None:
+async def get_last_event_id_async(db: DatabaseClient) -> str | None:
     """Get last processed event ID from database, fall back to JSON if None.
 
     Args:
@@ -167,7 +167,7 @@ async def get_last_event_id_async(db: "DatabaseClient") -> str | None:
         return None
 
 
-async def set_last_event_id_async(db: "DatabaseClient", event_id: str) -> None:
+async def set_last_event_id_async(db: DatabaseClient, event_id: str) -> None:
     """Set last processed event ID in database.
 
     Args:

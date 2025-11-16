@@ -52,7 +52,7 @@ def create_summary_embed(
     # Get quote and format it (remove leading emoji, add quotes and italics)
     raw_quote = get_random_quote()
     # Remove any leading emoji (Unicode emoji pattern)
-    cleaned_quote = re.sub(r'^[\U0001F300-\U0001F9FF\s]+', '', raw_quote).strip()
+    cleaned_quote = re.sub(r"^[\U0001F300-\U0001F9FF\s]+", "", raw_quote).strip()
     formatted_quote = f'*"{cleaned_quote}"*'
 
     # Create embed with title as clickable link and formatted quote as description

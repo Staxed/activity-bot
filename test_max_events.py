@@ -2,7 +2,7 @@
 """Test script to generate fakeevents and post to Discord."""
 
 import asyncio
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Load .env file from script directory
@@ -26,13 +26,17 @@ from app.shared.models import (
     ReleaseEvent,
 )
 
+
 # Mock the quote service to avoid needing database
 class MockQuoteService:
     """Mock quote service for testing."""
+
     def get_random_quote(self) -> str:
         return "💻 First, solve the problem. Then, write the code. - John Johnson"
 
+
 import app.discord.quotes as quotes_module
+
 _mock_service = MockQuoteService()
 quotes_module._quote_service = _mock_service
 quotes_module.get_random_quote = lambda: _mock_service.get_random_quote()
@@ -55,8 +59,8 @@ def create_fake_commits(count: int = 20) -> list[CommitEvent]:
                 author_email="staxed@example.com",
                 author_avatar_url="https://github.com/Staxed.png",
                 author_username="Staxed",
-                message=f"feat: implement comprehensive feature enhancement for module #{i+1} with extensive testing coverage",
-                message_body=f"feat: implement comprehensive feature enhancement for module #{i+1} with extensive testing coverage\n\nThis is a detailed description of the feature implementation.",
+                message=f"feat: implement comprehensive feature enhancement for module #{i + 1} with extensive testing coverage",
+                message_body=f"feat: implement comprehensive feature enhancement for module #{i + 1} with extensive testing coverage\n\nThis is a detailed description of the feature implementation.",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 branch="main",
@@ -87,7 +91,7 @@ def create_fake_prs(count: int = 2) -> list[PullRequestEvent]:
                 event_id=f"fake_pr_{i}",
                 pr_number=100 + i,
                 action=action,
-                title=f"Add new feature: Test PR #{i+1}",
+                title=f"Add new feature: Test PR #{i + 1}",
                 state=state,
                 merged=is_merged,
                 author_username="Staxed",
@@ -95,7 +99,7 @@ def create_fake_prs(count: int = 2) -> list[PullRequestEvent]:
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
-                url=f"https://github.com/Staxed/test-repo/pull/{100+i}",
+                url=f"https://github.com/Staxed/test-repo/pull/{100 + i}",
                 event_timestamp=base_time - timedelta(minutes=i),
             )
         )
@@ -120,14 +124,14 @@ def create_fake_issues(count: int = 2) -> list[IssuesEvent]:
                 event_id=f"fake_issue_{i}",
                 issue_number=200 + i,
                 action=action,
-                title=f"Bug: Fix issue #{i+1}",
+                title=f"Bug: Fix issue #{i + 1}",
                 state=state,
                 author_username="Staxed",
                 author_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
-                url=f"https://github.com/Staxed/test-repo/issues/{200+i}",
+                url=f"https://github.com/Staxed/test-repo/issues/{200 + i}",
                 event_timestamp=base_time - timedelta(minutes=i),
             )
         )
@@ -176,14 +180,14 @@ def create_fake_reviews(count: int = 2) -> list[PullRequestReviewEvent]:
                 event_id=f"fake_review_{i}",
                 pr_number=300 + i,
                 action="created",
-                pr_title=f"PR for review #{i+1}",
+                pr_title=f"PR for review #{i + 1}",
                 review_state=state,
                 reviewer_username="Staxed",
                 reviewer_avatar_url="https://github.com/Staxed.png",
                 repo_owner="Staxed",
                 repo_name="test-repo",
                 is_public=is_public,
-                url=f"https://github.com/Staxed/test-repo/pull/{300+i}",
+                url=f"https://github.com/Staxed/test-repo/pull/{300 + i}",
                 event_timestamp=base_time - timedelta(minutes=i),
             )
         )
@@ -199,7 +203,9 @@ def create_fake_creations(count: int = 2) -> list[CreateEvent]:
 
     for i in range(count):
         ref_type = ref_types[i % len(ref_types)]
-        ref_name = f"feature-{i}" if ref_type == "branch" else f"v1.{i}.0" if ref_type == "tag" else None
+        ref_name = (
+            f"feature-{i}" if ref_type == "branch" else f"v1.{i}.0" if ref_type == "tag" else None
+        )
         # Make at least one private (first one)
         is_public = i != 0
 
@@ -267,7 +273,7 @@ def create_fake_forks(count: int = 2) -> list[ForkEvent]:
                 fork_repo_owner="Staxed",
                 fork_repo_name="awesome-repo",
                 is_public=is_public,
-                fork_url=f"https://github.com/Staxed/awesome-repo",
+                fork_url="https://github.com/Staxed/awesome-repo",
                 event_timestamp=base_time - timedelta(minutes=i),
             )
         )
@@ -297,7 +303,9 @@ async def main() -> None:
     print(f"✅ Generated {len(creations)} creations")
     print(f"✅ Generated {len(deletions)} deletions")
     print(f"✅ Generated {len(forks)} forks")
-    print(f"📊 Total: {len(commits) + len(prs) + len(issues) + len(releases) + len(reviews) + len(creations) + len(deletions) + len(forks)} events")
+    print(
+        f"📊 Total: {len(commits) + len(prs) + len(issues) + len(releases) + len(reviews) + len(creations) + len(deletions) + len(forks)} events"
+    )
 
     # Load settings
     settings = get_settings()
@@ -316,16 +324,16 @@ async def main() -> None:
         print(f"📍 Channel ID: {settings.discord_channel_id}")
 
         # Pre-calculate embed sizes by importing the embed creation functions
+        from app.discord.embeds import create_commits_embed
         from app.discord.event_embeds import (
-            create_prs_embed,
-            create_issues_embed,
-            create_releases_embed,
-            create_reviews_embed,
             create_creations_embed,
             create_deletions_embed,
             create_forks_embed,
+            create_issues_embed,
+            create_prs_embed,
+            create_releases_embed,
+            create_reviews_embed,
         )
-        from app.discord.embeds import create_commits_embed
         from app.discord.summary_embed import create_summary_embed
 
         # Calculate total size
@@ -334,32 +342,34 @@ async def main() -> None:
         # Build event counts dict
         event_counts = {}
         if commits:
-            event_counts['commits'] = len(commits)
+            event_counts["commits"] = len(commits)
         if prs:
-            event_counts['pull_requests'] = len(prs)
+            event_counts["pull_requests"] = len(prs)
         if issues:
-            event_counts['issues'] = len(issues)
+            event_counts["issues"] = len(issues)
         if releases:
-            event_counts['releases'] = len(releases)
+            event_counts["releases"] = len(releases)
         if reviews:
-            event_counts['reviews'] = len(reviews)
+            event_counts["reviews"] = len(reviews)
         if creations:
-            event_counts['creations'] = len(creations)
+            event_counts["creations"] = len(creations)
         if deletions:
-            event_counts['deletions'] = len(deletions)
+            event_counts["deletions"] = len(deletions)
         if forks:
-            event_counts['forks'] = len(forks)
+            event_counts["forks"] = len(forks)
 
         # Get affected repos (simplified for test)
         affected_repos = [("Staxed/test-repo", True)]
 
-        test_embeds.append(create_summary_embed(
-            username="Staxed",
-            avatar_url="https://github.com/Staxed.png",
-            event_counts=event_counts,
-            affected_repos=affected_repos,
-            timestamp=datetime.now(UTC)
-        ))
+        test_embeds.append(
+            create_summary_embed(
+                username="Staxed",
+                avatar_url="https://github.com/Staxed.png",
+                event_counts=event_counts,
+                affected_repos=affected_repos,
+                timestamp=datetime.now(UTC),
+            )
+        )
         if commits:
             test_embeds.append(create_commits_embed(commits))
         if prs:
@@ -378,7 +388,9 @@ async def main() -> None:
             test_embeds.append(create_forks_embed(forks))
 
         total_chars = sum(len(str(embed.to_dict())) for embed in test_embeds if embed)
-        print(f"📊 About to send {len([e for e in test_embeds if e])} embeds with ~{total_chars} total characters (limit: 6000)")
+        print(
+            f"📊 About to send {len([e for e in test_embeds if e])} embeds with ~{total_chars} total characters (limit: 6000)"
+        )
 
         # Post all events
         await poster.post_all_events(

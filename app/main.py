@@ -252,7 +252,13 @@ async def startup() -> None:
 
 async def shutdown() -> None:
     """Cleanup on application shutdown."""
-    global database_client, quote_service, stats_service, github_client, discord_bot, polling_service
+    global \
+        database_client, \
+        quote_service, \
+        stats_service, \
+        github_client, \
+        discord_bot, \
+        polling_service
 
     logger.info("application.shutdown.started")
 

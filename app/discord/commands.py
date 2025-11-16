@@ -67,15 +67,11 @@ class StatsCommands(app_commands.Group, name="activity"):
 
         except Exception as e:
             logger.error("discord.command.stats.failed", error=str(e), exc_info=True)
-            await interaction.followup.send(
-                f"❌ Failed to fetch stats: {str(e)}", ephemeral=True
-            )
+            await interaction.followup.send(f"❌ Failed to fetch stats: {e!s}", ephemeral=True)
 
     @app_commands.command(name="streak", description="View your commit streaks")
     @app_commands.describe(username="GitHub username (defaults to you)")
-    async def streak(
-        self, interaction: discord.Interaction, username: str | None = None
-    ) -> None:
+    async def streak(self, interaction: discord.Interaction, username: str | None = None) -> None:
         """Display commit streaks.
 
         Args:
@@ -108,9 +104,7 @@ class StatsCommands(app_commands.Group, name="activity"):
 
         except Exception as e:
             logger.error("discord.command.streak.failed", error=str(e), exc_info=True)
-            await interaction.followup.send(
-                f"❌ Failed to fetch streaks: {str(e)}", ephemeral=True
-            )
+            await interaction.followup.send(f"❌ Failed to fetch streaks: {e!s}", ephemeral=True)
 
     @app_commands.command(name="repos", description="View repository activity")
     @app_commands.describe(
@@ -155,15 +149,11 @@ class StatsCommands(app_commands.Group, name="activity"):
 
         except Exception as e:
             logger.error("discord.command.repos.failed", error=str(e), exc_info=True)
-            await interaction.followup.send(
-                f"❌ Failed to fetch repos: {str(e)}", ephemeral=True
-            )
+            await interaction.followup.send(f"❌ Failed to fetch repos: {e!s}", ephemeral=True)
 
     @app_commands.command(name="insights", description="View coding time patterns")
     @app_commands.describe(username="GitHub username (defaults to you)")
-    async def insights(
-        self, interaction: discord.Interaction, username: str | None = None
-    ) -> None:
+    async def insights(self, interaction: discord.Interaction, username: str | None = None) -> None:
         """Display time pattern insights.
 
         Args:
@@ -195,7 +185,7 @@ class StatsCommands(app_commands.Group, name="activity"):
         except Exception as e:
             logger.error("discord.command.insights.failed", error=str(e), exc_info=True)
             await interaction.followup.send(
-                f"❌ Failed to fetch insights: {str(e)}", ephemeral=True
+                f"❌ Failed to fetch insights: {e!s}", ephemeral=True
             )
 
 
@@ -207,4 +197,7 @@ def setup_commands(tree: app_commands.CommandTree) -> None:
     """
     stats_commands = StatsCommands()
     tree.add_command(stats_commands)
-    logger.info("discord.commands.setup", commands=["activity stats", "activity streak", "activity repos", "activity insights"])
+    logger.info(
+        "discord.commands.setup",
+        commands=["activity stats", "activity streak", "activity repos", "activity insights"],
+    )

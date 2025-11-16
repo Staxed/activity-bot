@@ -1,7 +1,7 @@
 """Tests for database client."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
 from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncpg
 import pytest
