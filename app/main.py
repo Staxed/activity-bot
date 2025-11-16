@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 # Module-level variables for lifecycle management
 database_client: DatabaseClient | None = None
 quote_service: QuoteService | None = None
+stats_service: Any | None = None  # Avoid circular import, type is StatsService
 github_client: GitHubClient | None = None
 discord_bot: DiscordBot | None = None
 discord_poster: DiscordPoster | None = None
@@ -195,6 +196,19 @@ async def startup() -> None:
     await quote_service.start()
     set_quote_service(quote_service)
 
+    # Initialize stats service if enabled
+    stats_service = None
+    if settings.enable_stats:
+        from app.stats.service import StatsService, set_stats_service
+
+        stats_service = StatsService(
+            db_client=database_client,
+            refresh_interval_minutes=settings.stats_refresh_interval_minutes,
+        )
+        await stats_service.start()
+        set_stats_service(stats_service)
+        logger.info("stats.service.initialized")
+
     # Initialize GitHub client
     github_client = GitHubClient(settings.github_token)
     await github_client.__aenter__()
@@ -238,7 +252,7 @@ async def startup() -> None:
 
 async def shutdown() -> None:
     """Cleanup on application shutdown."""
-    global database_client, quote_service, github_client, discord_bot, polling_service
+    global database_client, quote_service, stats_service, github_client, discord_bot, polling_service
 
     logger.info("application.shutdown.started")
 
@@ -253,6 +267,10 @@ async def shutdown() -> None:
     # Close GitHub client
     if github_client:
         await github_client.__aexit__(None, None, None)
+
+    # Stop stats service
+    if stats_service:
+        await stats_service.stop()
 
     # Stop quote service
     if quote_service:
