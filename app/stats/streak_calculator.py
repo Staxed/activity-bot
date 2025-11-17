@@ -1,10 +1,10 @@
 """Streak calculation functions for daily/weekly/monthly/yearly streaks.
 
-All streaks are based on consecutive daily commits:
-- Daily: Count of consecutive days with commits
-- Weekly: Count of complete 7-day periods in consecutive daily streak
-- Monthly: Count of complete calendar months with commits every day
-- Yearly: Count of complete 365-day periods in consecutive daily streak
+Streak definitions:
+- Daily: Consecutive days with commits (strict - must commit every day)
+- Weekly: Consecutive weeks with at least 1 commit (breaks after 7 days without activity)
+- Monthly: Consecutive months with at least 1 commit (breaks after missing a full month)
+- Yearly: Consecutive years with at least 1 commit (breaks after missing a full year)
 """
 
 import asyncio
@@ -115,17 +115,17 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
 
 
 async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> StreakInfo:
-    """Calculate weekly commit streak (7+ consecutive days = 1 week).
+    """Calculate weekly commit streak (consecutive weeks with at least 1 commit).
 
-    Weekly streak counts complete 7-day periods within consecutive daily commits.
-    Example: 15 consecutive days = 2 week streak (2 complete 7-day periods)
+    Streak breaks after 7+ consecutive days without a commit.
+    Each week that has at least one commit counts toward the streak.
 
     Args:
         db: Database client
         username: GitHub username
 
     Returns:
-        StreakInfo with weekly streak data (count of 7-day periods)
+        StreakInfo with weekly streak data (count of consecutive weeks)
 
     Raises:
         DatabaseError: If database query fails
@@ -144,16 +144,60 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
             activity_dates = [row["activity_date"] for row in rows]
             today = datetime.now(UTC).date()
 
-            current_days, longest_days = _get_consecutive_daily_streaks(activity_dates, today)
+            if not activity_dates:
+                return StreakInfo(
+                    streak_type="weekly", current_streak=0, longest_streak=0, last_activity_date=None
+                )
 
-            # Convert days to weeks (integer division by 7)
-            current_weeks = current_days // 7
-            longest_weeks = longest_days // 7
+            last_date = activity_dates[0]
+
+            # Check if streak is still active (last commit within 7 days)
+            if last_date < today - timedelta(days=6):
+                current_streak = 0
+            else:
+                # Count consecutive weeks with activity
+                current_streak = 0
+                current_week_start = last_date - timedelta(days=last_date.weekday())  # Monday of last commit
+
+                for activity_date in activity_dates:
+                    week_start = activity_date - timedelta(days=activity_date.weekday())
+
+                    # If we hit a new week, increment streak
+                    if week_start < current_week_start:
+                        # Check if gap is more than 7 days (missed a week)
+                        if current_week_start - week_start > timedelta(days=7):
+                            break
+                        current_week_start = week_start
+                        current_streak += 1
+                    elif week_start == current_week_start:
+                        # First week counts
+                        if current_streak == 0:
+                            current_streak = 1
+
+            # Calculate longest streak
+            longest_streak = 0
+            if activity_dates:
+                temp_streak = 1
+                current_week_start = activity_dates[0] - timedelta(days=activity_dates[0].weekday())
+
+                for activity_date in activity_dates[1:]:
+                    week_start = activity_date - timedelta(days=activity_date.weekday())
+
+                    if week_start < current_week_start:
+                        # Check gap
+                        if current_week_start - week_start > timedelta(days=7):
+                            longest_streak = max(longest_streak, temp_streak)
+                            temp_streak = 1
+                        else:
+                            temp_streak += 1
+                        current_week_start = week_start
+
+                longest_streak = max(longest_streak, temp_streak)
 
             return StreakInfo(
                 streak_type="weekly",
-                current_streak=current_weeks,
-                longest_streak=longest_weeks,
+                current_streak=current_streak,
+                longest_streak=longest_streak,
                 last_activity_date=activity_dates[0],
             )
 
@@ -163,17 +207,17 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
 
 
 async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> StreakInfo:
-    """Calculate monthly commit streak (every day for full calendar months).
+    """Calculate monthly commit streak (consecutive months with at least 1 commit).
 
-    Monthly streak counts complete calendar months where every day had commits.
-    Must code every single day in the month (28-31 days depending on month).
+    Streak breaks after going a full calendar month without a commit.
+    Each month that has at least one commit counts toward the streak.
 
     Args:
         db: Database client
         username: GitHub username
 
     Returns:
-        StreakInfo with monthly streak data (count of complete months)
+        StreakInfo with monthly streak data (count of consecutive months)
 
     Raises:
         DatabaseError: If database query fails
@@ -195,90 +239,94 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
             activity_dates = [row["activity_date"] for row in rows]
             today = datetime.now(UTC).date()
 
-            # Convert to set for O(1) lookup
-            activity_set = set(activity_dates)
+            if not activity_dates:
+                return StreakInfo(
+                    streak_type="monthly",
+                    current_streak=0,
+                    longest_streak=0,
+                    last_activity_date=None,
+                )
 
-            # Calculate current monthly streak
-            current_months = 0
-            check_date = today
+            # Group activity dates by month
+            months_with_activity = set()
+            for activity_date in activity_dates:
+                month_key = (activity_date.year, activity_date.month)
+                months_with_activity.add(month_key)
 
-            # Start from current or previous month depending on today's date
-            # If we haven't coded today, start checking from previous month
-            if today not in activity_set:
-                # Go to first day of current month, then back one day to previous month
-                check_date = today.replace(day=1) - timedelta(days=1)
+            last_date = activity_dates[0]
+            current_month = (today.year, today.month)
+            last_activity_month = (last_date.year, last_date.month)
 
-            # Check consecutive months backward
-            while True:
-                # Get first and last day of this month
-                first_day = check_date.replace(day=1)
-                if check_date.month == 12:
-                    last_day = check_date.replace(day=31)
+            # Check if streak is still active (activity in current or previous month)
+            if last_activity_month < current_month:
+                # Check if we skipped a month
+                prev_year = current_month[0] if current_month[1] > 1 else current_month[0] - 1
+                prev_month = current_month[1] - 1 if current_month[1] > 1 else 12
+                if last_activity_month < (prev_year, prev_month):
+                    current_streak = 0
                 else:
-                    last_day = (check_date.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(
-                        days=1
-                    )
+                    # Start from last activity month
+                    current_streak = 1
+                    check_year, check_month = last_activity_month
 
-                # Check if every day in this month has activity
-                month_complete = True
-                current_day = first_day
-                while current_day <= last_day:
-                    if current_day not in activity_set:
-                        month_complete = False
-                        break
-                    current_day += timedelta(days=1)
+                    while True:
+                        # Move to previous month
+                        if check_month == 1:
+                            check_year -= 1
+                            check_month = 12
+                        else:
+                            check_month -= 1
 
-                if not month_complete:
-                    break
-
-                current_months += 1
-                # Move to previous month
-                check_date = first_day - timedelta(days=1)
-
-            # Calculate longest monthly streak (check all history)
-            longest_months = 0
-            if activity_dates:
-                # Start from earliest date and work forward
-                earliest = activity_dates[-1]
-                check_date = earliest
-
-                temp_months = 0
-                while check_date <= today:
-                    first_day = check_date.replace(day=1)
-                    if check_date.month == 12:
-                        last_day = check_date.replace(day=31)
-                    else:
-                        last_day = (check_date.replace(day=1) + timedelta(days=32)).replace(
-                            day=1
-                        ) - timedelta(days=1)
-
-                    # Check if every day in this month has activity
-                    month_complete = True
-                    current_day = first_day
-                    while current_day <= last_day:
-                        if current_day not in activity_set:
-                            month_complete = False
+                        month_key = (check_year, check_month)
+                        if month_key in months_with_activity:
+                            current_streak += 1
+                        else:
                             break
-                        current_day += timedelta(days=1)
+            else:
+                # Activity in current month, count backwards
+                current_streak = 1
+                check_year, check_month = current_month
 
-                    if month_complete:
-                        temp_months += 1
+                while True:
+                    # Move to previous month
+                    if check_month == 1:
+                        check_year -= 1
+                        check_month = 12
                     else:
-                        longest_months = max(longest_months, temp_months)
-                        temp_months = 0
+                        check_month -= 1
 
-                    # Move to next month
-                    if check_date.month == 12:
-                        check_date = check_date.replace(year=check_date.year + 1, month=1, day=1)
+                    month_key = (check_year, check_month)
+                    if month_key in months_with_activity:
+                        current_streak += 1
                     else:
-                        check_date = check_date.replace(month=check_date.month + 1, day=1)
+                        break
 
-                longest_months = max(longest_months, temp_months)
+            # Calculate longest streak
+            longest_streak = 0
+            if months_with_activity:
+                sorted_months = sorted(months_with_activity)
+                temp_streak = 1
+
+                for i in range(1, len(sorted_months)):
+                    prev_year, prev_month = sorted_months[i - 1]
+                    curr_year, curr_month = sorted_months[i]
+
+                    # Check if consecutive months
+                    expected_year = prev_year if prev_month < 12 else prev_year + 1
+                    expected_month = prev_month + 1 if prev_month < 12 else 1
+
+                    if (curr_year, curr_month) == (expected_year, expected_month):
+                        temp_streak += 1
+                    else:
+                        longest_streak = max(longest_streak, temp_streak)
+                        temp_streak = 1
+
+                longest_streak = max(longest_streak, temp_streak)
 
             return StreakInfo(
                 streak_type="monthly",
-                current_streak=current_months,
-                longest_streak=max(longest_months, current_months),
+                current_streak=current_streak,
+                longest_streak=longest_streak,
                 last_activity_date=activity_dates[0],
             )
 
@@ -288,17 +336,17 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
 
 
 async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> StreakInfo:
-    """Calculate yearly commit streak (365+ consecutive days = 1 year).
+    """Calculate yearly commit streak (consecutive years with at least 1 commit).
 
-    Yearly streak counts complete 365-day periods within consecutive daily commits.
-    Example: 400 consecutive days = 1 year streak (1 complete 365-day period)
+    Streak breaks after going a full calendar year without a commit.
+    Each year that has at least one commit counts toward the streak.
 
     Args:
         db: Database client
         username: GitHub username
 
     Returns:
-        StreakInfo with yearly streak data (count of 365-day periods)
+        StreakInfo with yearly streak data (count of consecutive years)
 
     Raises:
         DatabaseError: If database query fails
@@ -317,16 +365,61 @@ async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> Streak
             activity_dates = [row["activity_date"] for row in rows]
             today = datetime.now(UTC).date()
 
-            current_days, longest_days = _get_consecutive_daily_streaks(activity_dates, today)
+            if not activity_dates:
+                return StreakInfo(
+                    streak_type="yearly", current_streak=0, longest_streak=0, last_activity_date=None
+                )
 
-            # Convert days to years (integer division by 365)
-            current_years = current_days // 365
-            longest_years = longest_days // 365
+            # Group activity dates by year
+            years_with_activity = set()
+            for activity_date in activity_dates:
+                years_with_activity.add(activity_date.year)
+
+            last_date = activity_dates[0]
+            current_year = today.year
+            last_activity_year = last_date.year
+
+            # Check if streak is still active (activity in current or previous year)
+            if last_activity_year < current_year:
+                # Check if we skipped a year
+                if last_activity_year < current_year - 1:
+                    current_streak = 0
+                else:
+                    # Start from last activity year
+                    current_streak = 1
+                    check_year = last_activity_year - 1
+
+                    while check_year in years_with_activity:
+                        current_streak += 1
+                        check_year -= 1
+            else:
+                # Activity in current year, count backwards
+                current_streak = 1
+                check_year = current_year - 1
+
+                while check_year in years_with_activity:
+                    current_streak += 1
+                    check_year -= 1
+
+            # Calculate longest streak
+            longest_streak = 0
+            if years_with_activity:
+                sorted_years = sorted(years_with_activity)
+                temp_streak = 1
+
+                for i in range(1, len(sorted_years)):
+                    if sorted_years[i] == sorted_years[i - 1] + 1:
+                        temp_streak += 1
+                    else:
+                        longest_streak = max(longest_streak, temp_streak)
+                        temp_streak = 1
+
+                longest_streak = max(longest_streak, temp_streak)
 
             return StreakInfo(
                 streak_type="yearly",
-                current_streak=current_years,
-                longest_streak=longest_years,
+                current_streak=current_streak,
+                longest_streak=longest_streak,
                 last_activity_date=activity_dates[0],
             )
 
