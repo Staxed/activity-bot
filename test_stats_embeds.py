@@ -368,7 +368,7 @@ async def post_all_embeds():
         print("3️⃣  Posting achievements/badges embed...")
         milestone_achievements = create_fake_milestone_achievements()
         repeatable_achievements = create_fake_repeatable_achievements()
-        await channel.send("**TEST EMBED:** Achievements and badges (milestone + repeatable)")
+        await channel.send("**TEST EMBED:** Achievements and badges (`/activity badges`)")
         embed = create_badges_embed(milestone_achievements, repeatable_achievements)
         await channel.send(embed=embed)
         await asyncio.sleep(0.5)

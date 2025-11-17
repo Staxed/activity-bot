@@ -7,12 +7,15 @@ from discord import app_commands
 
 from app.core.logging import get_logger
 from app.discord.stats_embeds import (
+    create_badges_embed,
     create_insights_embed,
     create_repos_embed,
     create_stats_embed,
     create_streak_embed,
 )
+from app.stats.achievements import get_achievements
 from app.stats.calculator import calculate_repo_stats, calculate_time_patterns
+from app.stats.queries import GET_ACHIEVEMENT_COUNT, GET_MILESTONE_ACHIEVEMENTS
 from app.stats.service import get_stats_service
 from app.stats.streak_calculator import calculate_all_streaks
 
@@ -182,6 +185,61 @@ class StatsCommands(app_commands.Group, name="activity"):
             logger.error("discord.command.insights.failed", error=str(e), exc_info=True)
             await interaction.followup.send(f"❌ Failed to fetch insights: {e!s}", ephemeral=True)
 
+    @app_commands.command(name="badges", description="View your earned achievements and badges")
+    @app_commands.describe(username="GitHub username (defaults to you)")
+    async def badges(self, interaction: discord.Interaction, username: str | None = None) -> None:
+        """Display earned achievements and badges.
+
+        Args:
+            interaction: Discord interaction
+            username: Optional GitHub username
+        """
+        await interaction.response.defer()
+
+        try:
+            target_username = username or interaction.user.name
+
+            # Get all achievement definitions
+            all_achievements = get_achievements()
+
+            async with self.db_client.pool.acquire() as conn:
+                # Get milestone achievements
+                milestone_rows = await conn.fetch(GET_MILESTONE_ACHIEVEMENTS, target_username)
+
+                milestone_achievements = []
+                for row in milestone_rows:
+                    ach_id = row["achievement_id"]
+                    if ach_id in all_achievements:
+                        ach = all_achievements[ach_id]
+                        milestone_achievements.append((ach.emoji, ach.name, ach.description))
+
+                # Get repeatable achievement counts
+                repeatable_achievements = []
+                for ach_id, ach in all_achievements.items():
+                    if ach.achievement_type == "repeatable":
+                        count_row = await conn.fetchval(GET_ACHIEVEMENT_COUNT, target_username, ach_id)
+                        if count_row and count_row > 0:
+                            repeatable_achievements.append((ach.emoji, ach.name, count_row))
+
+                # Sort repeatable by count (highest first)
+                repeatable_achievements.sort(key=lambda x: x[2], reverse=True)
+
+            # Create embed
+            embed = create_badges_embed(milestone_achievements, repeatable_achievements)
+
+            await interaction.followup.send(embed=embed)
+            logger.info(
+                "discord.command.badges",
+                user=interaction.user.name,
+                target=target_username,
+                milestones=len(milestone_achievements),
+                repeatables=len(repeatable_achievements),
+            )
+
+        except Exception as e:
+            logger.error("discord.command.badges.failed", error=str(e), exc_info=True)
+            await interaction.followup.send(f"❌ Failed to fetch badges: {e!s}", ephemeral=True)
+
 
 def setup_commands(tree: app_commands.CommandTree, db_client: "DatabaseClient") -> None:
     """Setup stats commands on the command tree.
@@ -194,5 +252,11 @@ def setup_commands(tree: app_commands.CommandTree, db_client: "DatabaseClient") 
     tree.add_command(stats_commands)
     logger.info(
         "discord.commands.setup",
-        commands=["activity stats", "activity streak", "activity repos", "activity insights"],
+        commands=[
+            "activity stats",
+            "activity streak",
+            "activity repos",
+            "activity insights",
+            "activity badges",
+        ],
     )
