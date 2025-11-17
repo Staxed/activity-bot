@@ -58,12 +58,13 @@ class StatsCommands(app_commands.Group, name="activity"):
             # Get username from interaction or parameter
             target_username = username or interaction.user.name
 
-            # Get stats from service
+            # Get stats from service and top repos from database
             stats_service = get_stats_service()
             user_stats = await stats_service.get_user_stats_fresh(target_username)
+            top_repos = await calculate_repo_stats(self.db_client, target_username, since=None)
 
-            # Create embed
-            embed = create_stats_embed(user_stats, timeframe)
+            # Create embed with top 3 repos
+            embed = create_stats_embed(user_stats, timeframe, top_repos=top_repos[:3])
 
             await interaction.followup.send(embed=embed)
             logger.info(
