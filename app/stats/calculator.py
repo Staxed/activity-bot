@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import asyncpg
+import pytz
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.shared.exceptions import DatabaseError
 from app.stats.models import RepoStats, TimePatternStats, UserStats
@@ -47,12 +49,23 @@ async def calculate_user_stats(db: "DatabaseClient", username: str) -> UserStats
                 return UserStats(username=username)  # type: ignore[call-arg]
 
             # Get time window stats (today, this week, this month)
+            # Use configured timezone for "today" calculation
             from datetime import UTC
 
-            now = datetime.now(UTC).replace(tzinfo=None)
-            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            week_start = today_start - timedelta(days=today_start.weekday())
-            month_start = today_start.replace(day=1)
+            settings = get_settings()
+            tz = pytz.timezone(settings.stats_timezone)
+            now_local = datetime.now(tz)
+            today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            # Convert to UTC for database queries (stored as naive UTC)
+            today_start_utc = today_start.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            # Calculate week/month starts in local timezone, then convert to UTC
+            week_start_local = today_start - timedelta(days=today_start.weekday())
+            week_start = week_start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            month_start_local = today_start.replace(day=1)
+            month_start = month_start_local.astimezone(pytz.UTC).replace(tzinfo=None)
 
             # For commits and PRs in different time windows
             commits_today = await conn.fetchval(
@@ -61,7 +74,7 @@ async def calculate_user_stats(db: "DatabaseClient", username: str) -> UserStats
                 WHERE author_username = $1 AND commit_timestamp >= $2
                 """,
                 username,
-                today_start,
+                today_start_utc,
             )
 
             commits_week = await conn.fetchval(
@@ -88,7 +101,7 @@ async def calculate_user_stats(db: "DatabaseClient", username: str) -> UserStats
                 WHERE author_username = $1 AND event_timestamp >= $2
                 """,
                 username,
-                today_start,
+                today_start_utc,
             )
 
             prs_week = await conn.fetchval(
