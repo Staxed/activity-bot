@@ -7,7 +7,7 @@ import discord
 
 from app.core.logging import get_logger
 from app.discord.event_colors import SUMMARY_COLOR
-from app.stats.calculator import calculate_repo_stats, calculate_time_patterns, calculate_user_stats
+from app.stats.calculator import calculate_repo_stats
 from app.stats.streak_calculator import calculate_all_streaks
 
 if TYPE_CHECKING:
@@ -53,23 +53,28 @@ async def generate_daily_summary(
           AND event_timestamp < $3
     """
 
+    issues_query = """
+        SELECT COUNT(*) as count
+        FROM issues
+        WHERE author_username = $1
+          AND event_timestamp >= $2
+          AND event_timestamp < $3
+    """
+
     if not db.pool:
         raise RuntimeError("Database pool not initialized")
 
     async with db.pool.acquire() as conn:
         commits_count = await conn.fetchval(commits_query, username, day_start, day_end) or 0
         prs_count = await conn.fetchval(prs_query, username, day_start, day_end) or 0
+        issues_count = await conn.fetchval(issues_query, username, day_start, day_end) or 0
 
-        # Get repos active today
-        repos_query = """
-            SELECT DISTINCT repo_owner || '/' || repo_name as repo
-            FROM commits
-            WHERE author_username = $1
-              AND commit_timestamp >= $2
-              AND commit_timestamp < $3
-        """
-        repos = await conn.fetch(repos_query, username, day_start, day_end)
-        repo_list = [r["repo"] for r in repos]
+    # Get streaks
+    streaks = await calculate_all_streaks(db, username)
+    daily_streak = streaks.get("daily")
+
+    # Get repos for the period
+    repos = await calculate_repo_stats(db, username, since=day_start)
 
     # Create embed
     embed = discord.Embed(
@@ -78,19 +83,40 @@ async def generate_daily_summary(
         color=SUMMARY_COLOR,
     )
 
-    # Stats field
+    # Activity field
     embed.add_field(
         name="Activity",
-        value=f"💻 {commits_count} commits\n🔀 {prs_count} pull requests",
+        value=(
+            f"💻 {commits_count} commits\n"
+            f"🔀 {prs_count} pull requests\n"
+            f"🐛 {issues_count} issues"
+        ),
         inline=True,
     )
 
-    # Repos field
-    if repo_list:
-        repos_text = "\n".join(f"• {repo}" for repo in repo_list[:5])
-        if len(repo_list) > 5:
-            repos_text += f"\n... and {len(repo_list) - 5} more"
-        embed.add_field(name="Repositories", value=repos_text, inline=True)
+    # Streak field
+    streak_text = f"🔥 {daily_streak.current_streak} days" if daily_streak else "No streak"
+    if daily_streak and daily_streak.current_streak == daily_streak.longest_streak and daily_streak.current_streak > 0:
+        streak_text += "\n⭐ Personal best!"
+    embed.add_field(name="Streak", value=streak_text, inline=True)
+
+    # Repositories field with truncation
+    if repos:
+        sorted_repos = sorted(repos, key=lambda r: r.total_events, reverse=True)
+        repos_lines = []
+        char_count = 0
+        max_chars = 1024  # Discord field value limit
+
+        for repo in sorted_repos:
+            line = f"• {repo.repo_full_name} ({repo.commits}c/{repo.prs}p/{repo.issues}i)\n"
+            if char_count + len(line) + 30 > max_chars:  # Leave room for "... and X more"
+                remaining = len(sorted_repos) - len(repos_lines)
+                repos_lines.append(f"... and {remaining} more")
+                break
+            repos_lines.append(line.rstrip())
+            char_count += len(line)
+
+        embed.add_field(name="Repositories", value="\n".join(repos_lines), inline=False)
 
     # Check if it was a productive day
     if commits_count >= 10:
@@ -124,9 +150,6 @@ async def generate_weekly_summary(
         )
 
     week_end = week_start + timedelta(days=7)
-
-    # Calculate stats for the week
-    stats = await calculate_user_stats(db, username)
 
     # Get week-specific counts
     if not db.pool:
@@ -163,6 +186,21 @@ async def generate_weekly_summary(
             or 0
         )
 
+        issues_count = (
+            await conn.fetchval(
+                """
+            SELECT COUNT(*) FROM issues
+            WHERE author_username = $1
+              AND event_timestamp >= $2
+              AND event_timestamp < $3
+        """,
+                username,
+                week_start,
+                week_end,
+            )
+            or 0
+        )
+
         # Get active days
         active_days = await conn.fetchval(
             """
@@ -178,10 +216,15 @@ async def generate_weekly_summary(
 
     # Get streaks
     streaks = await calculate_all_streaks(db, username)
-    daily_streak = streaks.get("daily")
+    weekly_streak = streaks.get("weekly")
+
+    # Get repos for the period
+    repos = await calculate_repo_stats(db, username, since=week_start)
 
     # Create embed
-    week_label = f"{week_start.strftime('%b %d')} - {week_end.strftime('%b %d, %Y')}"
+    # week_end is exclusive boundary, so display the last day of the week (week_end - 1)
+    week_last_day = week_end - timedelta(days=1)
+    week_label = f"{week_start.strftime('%b %d')} - {week_last_day.strftime('%b %d, %Y')}"
     embed = discord.Embed(
         title=f"📅 Weekly Summary for {username}",
         description=f"Week of {week_label}",
@@ -194,29 +237,35 @@ async def generate_weekly_summary(
         value=(
             f"💻 {commits_count} commits\n"
             f"🔀 {prs_count} pull requests\n"
+            f"🐛 {issues_count} issues\n"
             f"📆 {active_days or 0} active days"
         ),
         inline=True,
     )
 
     # Streak info
-    if daily_streak:
-        streak_text = f"🔥 {daily_streak.current_streak} day streak"
-        if (
-            daily_streak.current_streak == daily_streak.longest_streak
-            and daily_streak.current_streak > 0
-        ):
-            streak_text += " (Personal best!)"
-        embed.add_field(name="Streak", value=streak_text, inline=True)
+    streak_text = f"🔥 {weekly_streak.current_streak} weeks" if weekly_streak else "No streak"
+    if weekly_streak and weekly_streak.current_streak == weekly_streak.longest_streak and weekly_streak.current_streak > 0:
+        streak_text += "\n⭐ Personal best!"
+    embed.add_field(name="Streak", value=streak_text, inline=True)
 
-    # Top repos
-    repos = await calculate_repo_stats(db, username, since=week_start)
+    # Repositories field with truncation
     if repos:
-        top_repos = sorted(repos, key=lambda r: r.total_events, reverse=True)[:3]
-        repos_text = "\n".join(
-            f"• {repo.repo_full_name} ({repo.total_events} events)" for repo in top_repos
-        )
-        embed.add_field(name="Top Repositories", value=repos_text, inline=False)
+        sorted_repos = sorted(repos, key=lambda r: r.total_events, reverse=True)
+        repos_lines = []
+        char_count = 0
+        max_chars = 1024  # Discord field value limit
+
+        for repo in sorted_repos:
+            line = f"• {repo.repo_full_name} ({repo.commits}c/{repo.prs}p/{repo.issues}i)\n"
+            if char_count + len(line) + 30 > max_chars:  # Leave room for "... and X more"
+                remaining = len(sorted_repos) - len(repos_lines)
+                repos_lines.append(f"... and {remaining} more")
+                break
+            repos_lines.append(line.rstrip())
+            char_count += len(line)
+
+        embed.add_field(name="Repositories", value="\n".join(repos_lines), inline=False)
 
     # Footer based on activity
     if commits_count >= 25:
@@ -324,12 +373,12 @@ async def generate_monthly_summary(
             month_end,
         )
 
-    # Get time patterns for the month
-    patterns = await calculate_time_patterns(db, username)
-
     # Get streaks
     streaks = await calculate_all_streaks(db, username)
     monthly_streak = streaks.get("monthly")
+
+    # Get repos for the period
+    repos = await calculate_repo_stats(db, username, since=month_start)
 
     # Create embed
     month_label = month_start.strftime("%B %Y")
@@ -351,24 +400,29 @@ async def generate_monthly_summary(
         inline=True,
     )
 
-    # Streak and patterns
-    streak_text = (
-        f"🔥 {monthly_streak.current_streak} month streak" if monthly_streak else "No streak"
-    )
-    if patterns.peak_hour is not None:
-        hour_12 = patterns.peak_hour % 12 or 12
-        am_pm = "AM" if patterns.peak_hour < 12 else "PM"
-        streak_text += f"\n⏰ Peak: {hour_12} {am_pm}"
-    embed.add_field(name="Patterns", value=streak_text, inline=True)
+    # Streak info
+    streak_text = f"🔥 {monthly_streak.current_streak} months" if monthly_streak else "No streak"
+    if monthly_streak and monthly_streak.current_streak == monthly_streak.longest_streak and monthly_streak.current_streak > 0:
+        streak_text += "\n⭐ Personal best!"
+    embed.add_field(name="Streak", value=streak_text, inline=True)
 
-    # Top repos
-    repos = await calculate_repo_stats(db, username, since=month_start)
+    # Repositories field with truncation
     if repos:
-        top_repos = sorted(repos, key=lambda r: r.total_events, reverse=True)[:5]
-        repos_text = "\n".join(
-            f"• {repo.repo_full_name} ({repo.commits}c/{repo.prs}p)" for repo in top_repos
-        )
-        embed.add_field(name="Top Repositories", value=repos_text, inline=False)
+        sorted_repos = sorted(repos, key=lambda r: r.total_events, reverse=True)
+        repos_lines = []
+        char_count = 0
+        max_chars = 1024  # Discord field value limit
+
+        for repo in sorted_repos:
+            line = f"• {repo.repo_full_name} ({repo.commits}c/{repo.prs}p/{repo.issues}i)\n"
+            if char_count + len(line) + 30 > max_chars:  # Leave room for "... and X more"
+                remaining = len(sorted_repos) - len(repos_lines)
+                repos_lines.append(f"... and {remaining} more")
+                break
+            repos_lines.append(line.rstrip())
+            char_count += len(line)
+
+        embed.add_field(name="Repositories", value="\n".join(repos_lines), inline=False)
 
     # Footer based on achievements
     if commits_count >= 100:
