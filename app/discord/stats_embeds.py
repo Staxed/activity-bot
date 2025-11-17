@@ -16,12 +16,15 @@ MAX_ITEMS = 10
 MAX_DESCRIPTION_LENGTH = 4096
 
 
-def create_stats_embed(stats: UserStats, timeframe: str = "week") -> discord.Embed:
+def create_stats_embed(
+    stats: UserStats, timeframe: str = "week", top_repos: list[RepoStats] | None = None
+) -> discord.Embed:
     """Create Discord embed for user statistics.
 
     Args:
         stats: UserStats object
         timeframe: Time window to highlight (today, week, month, all)
+        top_repos: Optional list of top repositories (shows top 3 if provided)
 
     Returns:
         Discord embed with stats
@@ -55,7 +58,14 @@ def create_stats_embed(stats: UserStats, timeframe: str = "week") -> discord.Emb
         f"**Total Activity**: {stats.total_commits + stats.total_prs + stats.total_issues} events",
     ]
 
-    if stats.most_active_repo:
+    # Show top 3 repos if provided, otherwise fall back to most_active_repo
+    if top_repos and len(top_repos) > 0:
+        repo_lines = []
+        for i, repo in enumerate(top_repos[:3], 1):
+            medal = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else ""
+            repo_lines.append(f"{medal} {repo.repo_full_name} ({repo.total_events})")
+        lines.append("**Top Repositories**:\n" + "\n".join(repo_lines))
+    elif stats.most_active_repo:
         lines.append(
             f"**Most Active Repo**: {stats.most_active_repo} ({stats.most_active_repo_count} events)"
         )

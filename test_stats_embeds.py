@@ -345,9 +345,10 @@ async def post_all_embeds():
         # 1. Stats embed - different timeframes
         print("1️⃣  Posting stats embeds (4 timeframes)...")
         fake_stats = create_fake_user_stats()
+        fake_repos = create_fake_repos()
 
         for timeframe in ["today", "week", "month", "all"]:
-            embed = create_stats_embed(fake_stats, timeframe)
+            embed = create_stats_embed(fake_stats, timeframe, top_repos=fake_repos)
             await channel.send(embed=embed)
             await asyncio.sleep(0.5)
         print("   ✓ Posted stats embeds\n")
