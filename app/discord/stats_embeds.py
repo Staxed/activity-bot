@@ -79,7 +79,7 @@ def create_stats_embed(stats: UserStats, timeframe: str = "week") -> discord.Emb
     )
 
     embed.add_field(
-        name="Other Activity",
+        name="\u200b",  # Zero-width space for no title
         value=(
             f"🚀 {stats.total_releases} releases\n"
             f"➕ {stats.total_creations} creations\n"
