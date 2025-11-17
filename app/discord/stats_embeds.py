@@ -52,10 +52,20 @@ def create_stats_embed(
         current_prs = stats.prs_this_week
         period_label = "This Week"
 
+    # Calculate total activity based on timeframe
+    if timeframe == "today":
+        total_activity = stats.commits_today + stats.prs_today
+    elif timeframe == "week":
+        total_activity = stats.commits_this_week + stats.prs_this_week
+    elif timeframe == "month":
+        total_activity = stats.commits_this_month + stats.prs_this_month
+    else:  # all
+        total_activity = stats.total_commits + stats.total_prs + stats.total_issues + stats.total_reviews + stats.total_releases + stats.total_creations + stats.total_deletions + stats.total_forks
+
     # Build description
     lines = [
         f"**{period_label}**: {current_commits} commits, {current_prs} PRs",
-        f"**Total Activity**: {stats.total_commits + stats.total_prs + stats.total_issues} events",
+        f"**Total Activity**: {total_activity} events",
     ]
 
     # Show top 3 repos if provided, otherwise fall back to most_active_repo

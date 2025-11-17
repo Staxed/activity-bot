@@ -63,10 +63,30 @@ class StatsCommands(app_commands.Group, name="activity"):
             discord_username = username or interaction.user.name
             target_username = get_settings().get_github_username(discord_username)
 
+            # Calculate since date based on timeframe
+            from datetime import datetime, timedelta
+            import pytz
+
+            settings = get_settings()
+            tz = pytz.timezone(settings.stats_timezone)
+            now_local = datetime.now(tz)
+            today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            if timeframe == "today":
+                since = today_start.astimezone(pytz.UTC).replace(tzinfo=None)
+            elif timeframe == "week":
+                week_start = today_start - timedelta(days=today_start.weekday())
+                since = week_start.astimezone(pytz.UTC).replace(tzinfo=None)
+            elif timeframe == "month":
+                month_start = today_start.replace(day=1)
+                since = month_start.astimezone(pytz.UTC).replace(tzinfo=None)
+            else:  # all
+                since = None
+
             # Get stats from service and top repos from database
             stats_service = get_stats_service()
             user_stats = await stats_service.get_user_stats_fresh(target_username)
-            top_repos = await calculate_repo_stats(self.db_client, target_username, since=None)
+            top_repos = await calculate_repo_stats(self.db_client, target_username, since=since)
 
             # Create embed with top 3 repos
             embed = create_stats_embed(user_stats, timeframe, top_repos=top_repos[:3])
