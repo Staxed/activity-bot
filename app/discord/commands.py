@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal
 import discord
 from discord import app_commands
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.discord.stats_embeds import (
     create_badges_embed,
@@ -58,8 +59,9 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            # Get username from interaction or parameter
-            target_username = username or interaction.user.name
+            # Get Discord username and map to GitHub username
+            discord_username = username or interaction.user.name
+            target_username = get_settings().get_github_username(discord_username)
 
             # Get stats from service and top repos from database
             stats_service = get_stats_service()
@@ -93,8 +95,9 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            # Get username
-            target_username = username or interaction.user.name
+            # Get Discord username and map to GitHub username
+            discord_username = username or interaction.user.name
+            target_username = get_settings().get_github_username(discord_username)
 
             # Calculate streaks using bot's database client
             streaks = await calculate_all_streaks(self.db_client, target_username)
@@ -134,7 +137,9 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            target_username = username or interaction.user.name
+            # Get Discord username and map to GitHub username
+            discord_username = username or interaction.user.name
+            target_username = get_settings().get_github_username(discord_username)
 
             # Calculate repo stats using bot's database client
             repos = await calculate_repo_stats(self.db_client, target_username, since=None)
@@ -166,7 +171,9 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            target_username = username or interaction.user.name
+            # Get Discord username and map to GitHub username
+            discord_username = username or interaction.user.name
+            target_username = get_settings().get_github_username(discord_username)
 
             # Calculate time patterns using bot's database client
             patterns = await calculate_time_patterns(self.db_client, target_username)
@@ -197,7 +204,9 @@ class StatsCommands(app_commands.Group, name="activity"):
         await interaction.response.defer()
 
         try:
-            target_username = username or interaction.user.name
+            # Get Discord username and map to GitHub username
+            discord_username = username or interaction.user.name
+            target_username = get_settings().get_github_username(discord_username)
 
             # Get all achievement definitions
             all_achievements = get_achievements()
