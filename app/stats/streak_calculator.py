@@ -1,4 +1,11 @@
-"""Streak calculation functions for daily/weekly/monthly/yearly streaks."""
+"""Streak calculation functions for daily/weekly/monthly/yearly streaks.
+
+All streaks are based on consecutive daily commits:
+- Daily: Count of consecutive days with commits
+- Weekly: Count of complete 7-day periods in consecutive daily streak
+- Monthly: Count of complete calendar months with commits every day
+- Yearly: Count of complete 365-day periods in consecutive daily streak
+"""
 
 import asyncio
 from datetime import UTC, date, datetime, timedelta
@@ -9,17 +16,61 @@ import asyncpg
 from app.core.logging import get_logger
 from app.shared.exceptions import DatabaseError
 from app.stats.models import StreakInfo
-from app.stats.queries import (
-    GET_ACTIVITY_DATES,
-    GET_MONTHLY_ACTIVITY,
-    GET_WEEKLY_ACTIVITY,
-    GET_YEARLY_ACTIVITY,
-)
+from app.stats.queries import GET_ACTIVITY_DATES
 
 if TYPE_CHECKING:
     from app.core.database import DatabaseClient
 
 logger = get_logger(__name__)
+
+
+def _get_consecutive_daily_streaks(activity_dates: list[date], today: date) -> tuple[int, int]:
+    """Calculate current and longest consecutive daily streaks.
+
+    Args:
+        activity_dates: List of activity dates in descending order
+        today: Current date
+
+    Returns:
+        Tuple of (current_streak_days, longest_streak_days)
+    """
+    if not activity_dates:
+        return 0, 0
+
+    last_date = activity_dates[0]
+
+    # Check if streak is still active (last commit today or yesterday - grace period)
+    if last_date < today - timedelta(days=1):
+        current_streak = 0
+    else:
+        # Count consecutive days from most recent
+        current_streak = 1
+        expected_date = last_date - timedelta(days=1)
+
+        for activity_date in activity_dates[1:]:
+            if activity_date == expected_date:
+                current_streak += 1
+                expected_date -= timedelta(days=1)
+            elif activity_date < expected_date:
+                break
+
+    # Calculate longest streak ever
+    longest_streak = 0
+    temp_streak = 1
+    expected_date = activity_dates[0] - timedelta(days=1)
+
+    for activity_date in activity_dates[1:]:
+        if activity_date == expected_date:
+            temp_streak += 1
+            expected_date -= timedelta(days=1)
+        else:
+            longest_streak = max(longest_streak, temp_streak)
+            temp_streak = 1
+            expected_date = activity_date - timedelta(days=1)
+
+    longest_streak = max(longest_streak, temp_streak)
+
+    return current_streak, longest_streak
 
 
 async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakInfo:
@@ -30,7 +81,7 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
         username: GitHub username
 
     Returns:
-        StreakInfo with daily streak data
+        StreakInfo with daily streak data (consecutive days)
 
     Raises:
         DatabaseError: If database query fails
@@ -40,7 +91,6 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
 
     try:
         async with db.pool.acquire() as conn:
-            # Get all unique activity dates in descending order
             rows = await conn.fetch(GET_ACTIVITY_DATES, username)
             if not rows:
                 return StreakInfo(
@@ -48,48 +98,15 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
                 )
 
             activity_dates = [row["activity_date"] for row in rows]
-            last_date = activity_dates[0]
             today = datetime.now(UTC).date()
 
-            # Check if streak is still active (last commit today or yesterday - grace period)
-            if last_date < today - timedelta(days=1):
-                # Streak broken (no activity today or yesterday)
-                current_streak = 0
-            else:
-                # Count consecutive days
-                current_streak = 1
-                expected_date = last_date - timedelta(days=1)
-
-                for activity_date in activity_dates[1:]:
-                    if activity_date == expected_date:
-                        current_streak += 1
-                        expected_date -= timedelta(days=1)
-                    elif activity_date < expected_date:
-                        # Gap found, stop counting
-                        break
-
-            # Calculate longest streak
-            longest_streak = 0
-            if len(activity_dates) > 0:
-                temp_streak = 1
-                expected_date = activity_dates[0] - timedelta(days=1)
-
-                for activity_date in activity_dates[1:]:
-                    if activity_date == expected_date:
-                        temp_streak += 1
-                        expected_date -= timedelta(days=1)
-                    else:
-                        longest_streak = max(longest_streak, temp_streak)
-                        temp_streak = 1
-                        expected_date = activity_date - timedelta(days=1)
-
-                longest_streak = max(longest_streak, temp_streak)
+            current_streak, longest_streak = _get_consecutive_daily_streaks(activity_dates, today)
 
             return StreakInfo(
                 streak_type="daily",
                 current_streak=current_streak,
-                longest_streak=max(longest_streak, current_streak),
-                last_activity_date=last_date,
+                longest_streak=longest_streak,
+                last_activity_date=activity_dates[0],
             )
 
     except asyncpg.PostgresError as e:
@@ -98,14 +115,17 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
 
 
 async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> StreakInfo:
-    """Calculate weekly commit streak (any activity in Mon-Sun week counts).
+    """Calculate weekly commit streak (7+ consecutive days = 1 week).
+
+    Weekly streak counts complete 7-day periods within consecutive daily commits.
+    Example: 15 consecutive days = 2 week streak (2 complete 7-day periods)
 
     Args:
         db: Database client
         username: GitHub username
 
     Returns:
-        StreakInfo with weekly streak data
+        StreakInfo with weekly streak data (count of 7-day periods)
 
     Raises:
         DatabaseError: If database query fails
@@ -115,56 +135,26 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
 
     try:
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_WEEKLY_ACTIVITY, username)
+            rows = await conn.fetch(GET_ACTIVITY_DATES, username)
             if not rows:
                 return StreakInfo(
-                    streak_type="weekly",
-                    current_streak=0,
-                    longest_streak=0,
-                    last_activity_date=None,
+                    streak_type="weekly", current_streak=0, longest_streak=0, last_activity_date=None
                 )
 
-            week_starts = [row["week_start"] for row in rows]
-            last_week = week_starts[0]
+            activity_dates = [row["activity_date"] for row in rows]
             today = datetime.now(UTC).date()
-            current_week_start = today - timedelta(days=today.weekday())
 
-            # Check if streak is active (activity in current or previous week)
-            if last_week < current_week_start - timedelta(weeks=1):
-                current_streak = 0
-            else:
-                current_streak = 1
-                expected_week = last_week - timedelta(weeks=1)
+            current_days, longest_days = _get_consecutive_daily_streaks(activity_dates, today)
 
-                for week_start in week_starts[1:]:
-                    if week_start == expected_week:
-                        current_streak += 1
-                        expected_week -= timedelta(weeks=1)
-                    elif week_start < expected_week:
-                        break
-
-            # Calculate longest streak
-            longest_streak = 0
-            if len(week_starts) > 0:
-                temp_streak = 1
-                expected_week = week_starts[0] - timedelta(weeks=1)
-
-                for week_start in week_starts[1:]:
-                    if week_start == expected_week:
-                        temp_streak += 1
-                        expected_week -= timedelta(weeks=1)
-                    else:
-                        longest_streak = max(longest_streak, temp_streak)
-                        temp_streak = 1
-                        expected_week = week_start - timedelta(weeks=1)
-
-                longest_streak = max(longest_streak, temp_streak)
+            # Convert days to weeks (integer division by 7)
+            current_weeks = current_days // 7
+            longest_weeks = longest_days // 7
 
             return StreakInfo(
                 streak_type="weekly",
-                current_streak=current_streak,
-                longest_streak=max(longest_streak, current_streak),
-                last_activity_date=last_week,
+                current_streak=current_weeks,
+                longest_streak=longest_weeks,
+                last_activity_date=activity_dates[0],
             )
 
     except asyncpg.PostgresError as e:
@@ -173,14 +163,17 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
 
 
 async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> StreakInfo:
-    """Calculate monthly commit streak.
+    """Calculate monthly commit streak (every day for full calendar months).
+
+    Monthly streak counts complete calendar months where every day had commits.
+    Must code every single day in the month (28-31 days depending on month).
 
     Args:
         db: Database client
         username: GitHub username
 
     Returns:
-        StreakInfo with monthly streak data
+        StreakInfo with monthly streak data (count of complete months)
 
     Raises:
         DatabaseError: If database query fails
@@ -190,7 +183,7 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
 
     try:
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_MONTHLY_ACTIVITY, username)
+            rows = await conn.fetch(GET_ACTIVITY_DATES, username)
             if not rows:
                 return StreakInfo(
                     streak_type="monthly",
@@ -199,66 +192,94 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
                     last_activity_date=None,
                 )
 
-            month_starts = [row["month_start"] for row in rows]
-            last_month = month_starts[0]
+            activity_dates = [row["activity_date"] for row in rows]
             today = datetime.now(UTC).date()
-            current_month_start = today.replace(day=1)
 
-            # Previous month
-            if current_month_start.month == 1:
-                prev_month = current_month_start.replace(
-                    year=current_month_start.year - 1, month=12
-                )
-            else:
-                prev_month = current_month_start.replace(month=current_month_start.month - 1)
+            # Convert to set for O(1) lookup
+            activity_set = set(activity_dates)
 
-            # Check if streak is active
-            if last_month < prev_month:
-                current_streak = 0
-            else:
-                current_streak = 1
+            # Calculate current monthly streak
+            current_months = 0
+            check_date = today
 
-                for i in range(1, len(month_starts)):
-                    prev_start = month_starts[i - 1]
-                    curr_start = month_starts[i]
+            # Start from current or previous month depending on today's date
+            # If we haven't coded today, start checking from previous month
+            if today not in activity_set:
+                # Go to first day of current month, then back one day to previous month
+                check_date = today.replace(day=1) - timedelta(days=1)
 
-                    # Check if consecutive months
-                    if prev_start.month == 1:
-                        expected = prev_start.replace(year=prev_start.year - 1, month=12)
-                    else:
-                        expected = prev_start.replace(month=prev_start.month - 1)
+            # Check consecutive months backward
+            while True:
+                # Get first and last day of this month
+                first_day = check_date.replace(day=1)
+                if check_date.month == 12:
+                    last_day = check_date.replace(day=31)
+                else:
+                    last_day = (check_date.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(
+                        days=1
+                    )
 
-                    if curr_start == expected:
-                        current_streak += 1
-                    else:
+                # Check if every day in this month has activity
+                month_complete = True
+                current_day = first_day
+                while current_day <= last_day:
+                    if current_day not in activity_set:
+                        month_complete = False
                         break
+                    current_day += timedelta(days=1)
 
-            # Calculate longest streak
-            longest_streak = 1
-            temp_streak = 1
+                if not month_complete:
+                    break
 
-            for i in range(1, len(month_starts)):
-                prev_start = month_starts[i - 1]
-                curr_start = month_starts[i]
+                current_months += 1
+                # Move to previous month
+                check_date = first_day - timedelta(days=1)
 
-                if prev_start.month == 1:
-                    expected = prev_start.replace(year=prev_start.year - 1, month=12)
-                else:
-                    expected = prev_start.replace(month=prev_start.month - 1)
+            # Calculate longest monthly streak (check all history)
+            longest_months = 0
+            if activity_dates:
+                # Start from earliest date and work forward
+                earliest = activity_dates[-1]
+                check_date = earliest
 
-                if curr_start == expected:
-                    temp_streak += 1
-                else:
-                    longest_streak = max(longest_streak, temp_streak)
-                    temp_streak = 1
+                temp_months = 0
+                while check_date <= today:
+                    first_day = check_date.replace(day=1)
+                    if check_date.month == 12:
+                        last_day = check_date.replace(day=31)
+                    else:
+                        last_day = (check_date.replace(day=1) + timedelta(days=32)).replace(
+                            day=1
+                        ) - timedelta(days=1)
 
-            longest_streak = max(longest_streak, temp_streak)
+                    # Check if every day in this month has activity
+                    month_complete = True
+                    current_day = first_day
+                    while current_day <= last_day:
+                        if current_day not in activity_set:
+                            month_complete = False
+                            break
+                        current_day += timedelta(days=1)
+
+                    if month_complete:
+                        temp_months += 1
+                    else:
+                        longest_months = max(longest_months, temp_months)
+                        temp_months = 0
+
+                    # Move to next month
+                    if check_date.month == 12:
+                        check_date = check_date.replace(year=check_date.year + 1, month=1, day=1)
+                    else:
+                        check_date = check_date.replace(month=check_date.month + 1, day=1)
+
+                longest_months = max(longest_months, temp_months)
 
             return StreakInfo(
                 streak_type="monthly",
-                current_streak=current_streak,
-                longest_streak=max(longest_streak, current_streak),
-                last_activity_date=last_month,
+                current_streak=current_months,
+                longest_streak=max(longest_months, current_months),
+                last_activity_date=activity_dates[0],
             )
 
     except asyncpg.PostgresError as e:
@@ -267,14 +288,17 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
 
 
 async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> StreakInfo:
-    """Calculate yearly commit streak.
+    """Calculate yearly commit streak (365+ consecutive days = 1 year).
+
+    Yearly streak counts complete 365-day periods within consecutive daily commits.
+    Example: 400 consecutive days = 1 year streak (1 complete 365-day period)
 
     Args:
         db: Database client
         username: GitHub username
 
     Returns:
-        StreakInfo with yearly streak data
+        StreakInfo with yearly streak data (count of 365-day periods)
 
     Raises:
         DatabaseError: If database query fails
@@ -284,49 +308,26 @@ async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> Streak
 
     try:
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_YEARLY_ACTIVITY, username)
+            rows = await conn.fetch(GET_ACTIVITY_DATES, username)
             if not rows:
                 return StreakInfo(
-                    streak_type="yearly",
-                    current_streak=0,
-                    longest_streak=0,
-                    last_activity_date=None,
+                    streak_type="yearly", current_streak=0, longest_streak=0, last_activity_date=None
                 )
 
-            years = [row["year"] for row in rows]
-            last_year = years[0]
-            current_year = datetime.now(UTC).date().year
+            activity_dates = [row["activity_date"] for row in rows]
+            today = datetime.now(UTC).date()
 
-            # Check if streak is active
-            if last_year < current_year - 1:
-                current_streak = 0
-            else:
-                current_streak = 1
+            current_days, longest_days = _get_consecutive_daily_streaks(activity_dates, today)
 
-                for i in range(1, len(years)):
-                    if years[i] == years[i - 1] - 1:
-                        current_streak += 1
-                    else:
-                        break
-
-            # Calculate longest streak
-            longest_streak = 1
-            temp_streak = 1
-
-            for i in range(1, len(years)):
-                if years[i] == years[i - 1] - 1:
-                    temp_streak += 1
-                else:
-                    longest_streak = max(longest_streak, temp_streak)
-                    temp_streak = 1
-
-            longest_streak = max(longest_streak, temp_streak)
+            # Convert days to years (integer division by 365)
+            current_years = current_days // 365
+            longest_years = longest_days // 365
 
             return StreakInfo(
                 streak_type="yearly",
-                current_streak=current_streak,
-                longest_streak=max(longest_streak, current_streak),
-                last_activity_date=date(last_year, 12, 31),
+                current_streak=current_years,
+                longest_streak=longest_years,
+                last_activity_date=activity_dates[0],
             )
 
     except asyncpg.PostgresError as e:

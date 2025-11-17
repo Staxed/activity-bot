@@ -348,6 +348,8 @@ async def post_all_embeds():
         fake_repos = create_fake_repos()
 
         for timeframe in ["today", "week", "month", "all"]:
+            # Post comment describing this embed
+            await channel.send(f"**TEST EMBED:** Stats for `{timeframe}` timeframe (`/activity stats {timeframe}`)")
             embed = create_stats_embed(fake_stats, timeframe, top_repos=fake_repos)
             await channel.send(embed=embed)
             await asyncio.sleep(0.5)
@@ -356,6 +358,7 @@ async def post_all_embeds():
         # 2. Streak embed
         print("2️⃣  Posting streak embed...")
         fake_streaks = create_fake_streaks()
+        await channel.send("**TEST EMBED:** Streak information (`/activity streak`)")
         embed = create_streak_embed(fake_streaks)
         await channel.send(embed=embed)
         await asyncio.sleep(0.5)
@@ -365,6 +368,7 @@ async def post_all_embeds():
         print("3️⃣  Posting achievements/badges embed...")
         milestone_achievements = create_fake_milestone_achievements()
         repeatable_achievements = create_fake_repeatable_achievements()
+        await channel.send("**TEST EMBED:** Achievements and badges (milestone + repeatable)")
         embed = create_badges_embed(milestone_achievements, repeatable_achievements)
         await channel.send(embed=embed)
         await asyncio.sleep(0.5)
@@ -375,6 +379,7 @@ async def post_all_embeds():
         fake_repos = create_fake_repos()
 
         for sort_by in ["total", "commits", "prs", "issues"]:
+            await channel.send(f"**TEST EMBED:** Repository stats sorted by `{sort_by}` (`/activity repos {sort_by}`)")
             embed = create_repos_embed(fake_repos, sort_by)
             await channel.send(embed=embed)
             await asyncio.sleep(0.5)
@@ -383,6 +388,7 @@ async def post_all_embeds():
         # 5. Time insights embed
         print("5️⃣  Posting time insights embed...")
         fake_patterns = create_fake_time_patterns()
+        await channel.send("**TEST EMBED:** Coding time patterns and insights (`/activity insights`)")
         embed = create_insights_embed(fake_patterns)
         await channel.send(embed=embed)
         await asyncio.sleep(0.5)
@@ -403,6 +409,7 @@ async def post_all_embeds():
 
         for ach_id in sample_achievement_ids:
             ach = achievements[ach_id]
+            await channel.send(f"**TEST EMBED:** Achievement unlock announcement - `{ach.name}` (posted automatically when earned)")
             embed = create_achievement_announcement_embed(
                 ach.emoji, ach.name, ach.description, total_count=5
             )
@@ -413,6 +420,7 @@ async def post_all_embeds():
         # 7. Daily summary
         print("7️⃣  Posting daily summary...")
         fake_db = FakeDatabaseClient()
+        await channel.send("**TEST EMBED:** Daily summary (posted automatically at 9:00 AM with yesterday's stats)")
         daily_embed = await generate_daily_summary(fake_db, "testuser")
         await channel.send(embed=daily_embed)
         await asyncio.sleep(0.5)
@@ -420,6 +428,7 @@ async def post_all_embeds():
 
         # 8. Weekly summary
         print("8️⃣  Posting weekly summary...")
+        await channel.send("**TEST EMBED:** Weekly summary (posted automatically on Mondays at 9:00 AM)")
         weekly_embed = await generate_weekly_summary(fake_db, "testuser")
         await channel.send(embed=weekly_embed)
         await asyncio.sleep(0.5)
@@ -427,6 +436,7 @@ async def post_all_embeds():
 
         # 9. Monthly summary
         print("9️⃣  Posting monthly summary...")
+        await channel.send("**TEST EMBED:** Monthly summary (posted automatically on 1st of month at 9:00 AM)")
         monthly_embed = await generate_monthly_summary(fake_db, "testuser")
         await channel.send(embed=monthly_embed)
         await asyncio.sleep(0.5)
