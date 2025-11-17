@@ -135,7 +135,7 @@ def create_streak_embed(streaks: dict[str, StreakInfo]) -> discord.Embed:
 
         line = (
             f"{emoji} **{type_label}**: "
-            f"{streak.current_streak} current / {streak.longest_streak} longest"
+            f"Current: {streak.current_streak} / Record: {streak.longest_streak}"
         )
         lines.append(line)
 
