@@ -255,9 +255,9 @@ def test_model_post_init_loads_dynamic_ignored_repos(monkeypatch: pytest.MonkeyP
     assert hasattr(settings, "staxed_ignored_repos")
 
     # Check values
-    assert getattr(settings, "user1_ignored_repos") == "user1/private-*"
-    assert getattr(settings, "user2_ignored_repos") == "user2/secret-*"
-    assert getattr(settings, "staxed_ignored_repos") == "staxed/test-*"
+    assert settings.user1_ignored_repos == "user1/private-*"
+    assert settings.user2_ignored_repos == "user2/secret-*"
+    assert settings.staxed_ignored_repos == "staxed/test-*"
 
 
 def test_model_post_init_ignores_non_ignored_repos_vars(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -276,4 +276,4 @@ def test_model_post_init_ignores_non_ignored_repos_vars(monkeypatch: pytest.Monk
     # Should NOT have the other var (unless it's a defined field)
     # Since extra="allow", it might be there, but model_post_init shouldn't set it
     # Let's just verify the _IGNORED_REPOS was set correctly
-    assert getattr(settings, "user1_ignored_repos") == "user1/private-*"
+    assert settings.user1_ignored_repos == "user1/private-*"

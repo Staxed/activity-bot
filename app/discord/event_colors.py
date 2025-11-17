@@ -10,3 +10,11 @@ CREATION_COLOR = 0x57D9A3  # Teal
 DELETION_COLOR = 0x000000  # Black
 FORK_COLOR = 0xC0C0C0  # Silver
 SUMMARY_COLOR = 0x5865F2  # Discord blurple
+
+# Stats and achievement colors
+STATS_COLOR = 0x1F8B4C  # Forest green
+ACHIEVEMENT_COLOR = 0xFFD700  # Gold
+STREAK_COLOR = 0xFF6B35  # Orange
+LEADERBOARD_COLOR = 0x5865F2  # Discord blurple
+REPO_STATS_COLOR = 0x57D9A3  # Teal
+TIME_PATTERN_COLOR = 0x9B59B6  # Purple

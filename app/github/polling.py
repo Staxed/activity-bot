@@ -435,6 +435,10 @@ class GitHubPollingService:
             self.db.insert_forks(forks),
         )
 
+        # Check daily achievements if stats enabled
+        if self.settings.enable_stats and commits:
+            await self._check_achievements_for_user(username, discord_poster)
+
         # Filter to only unposted events before posting to Discord
         # This prevents duplicate Discord posts when events are seen in multiple poll cycles
         # within the 12-hour window. Queries are parallelized for performance.
@@ -522,6 +526,79 @@ class GitHubPollingService:
         )
 
         return total_events
+
+    async def _check_achievements_for_user(
+        self, username: str, discord_poster: "DiscordPoster | None"
+    ) -> None:
+        """Check and announce daily achievements for a user.
+
+        Args:
+            username: GitHub username
+            discord_poster: Optional Discord poster for announcements
+        """
+        try:
+            from datetime import UTC, datetime
+
+            from app.discord.stats_embeds import create_achievement_announcement_embed
+            from app.stats.achievement_checker import (
+                check_daily_achievements,
+                get_achievement_count,
+                record_achievement,
+            )
+            from app.stats.achievements import get_achievements
+
+            # Check achievements for today
+            today = datetime.now(UTC).date()
+            earned_achievements = await check_daily_achievements(self.db, username, today)
+
+            if not earned_achievements:
+                return
+
+            logger.info(
+                "achievements.earned",
+                username=username,
+                count=len(earned_achievements),
+                date=today,
+            )
+
+            # Record and announce each achievement
+            achievements_def = get_achievements()
+            for earned in earned_achievements:
+                # Record to database
+                await record_achievement(self.db, username, earned)
+
+                # Get total count
+                total_count = await get_achievement_count(self.db, username, earned.achievement_id)
+
+                # Announce to Discord if poster available
+                if discord_poster:
+                    ach = achievements_def.get(earned.achievement_id)
+                    if ach:
+                        embed = create_achievement_announcement_embed(
+                            ach.emoji, ach.name, ach.description, total_count
+                        )
+                        try:
+                            await discord_poster.post_custom_embed(embed)
+                            logger.info(
+                                "achievement.announced",
+                                username=username,
+                                achievement=earned.achievement_id,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "achievement.announce.failed",
+                                achievement=earned.achievement_id,
+                                error=str(e),
+                            )
+
+        except Exception as e:
+            logger.error(
+                "achievements.check.failed",
+                username=username,
+                error=str(e),
+                exc_info=True,
+            )
+            # Don't fail polling if achievement check fails
 
     async def _poll_loop(self) -> None:
         """Background task loop for polling at regular intervals."""

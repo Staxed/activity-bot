@@ -1,7 +1,5 @@
 """Discord embed builders for GitHub event types."""
 
-from datetime import datetime
-
 import discord
 
 from app.discord.event_colors import (
@@ -95,7 +93,9 @@ def create_issues_embed(issues: list[IssuesEvent]) -> discord.Embed | None:
         return None
 
     # Sort by public repos first, then by timestamp (newest first)
-    sorted_issues = sorted(issues, key=lambda issue: (issue.is_public, issue.event_timestamp), reverse=True)
+    sorted_issues = sorted(
+        issues, key=lambda issue: (issue.is_public, issue.event_timestamp), reverse=True
+    )
 
     # Create embed
     embed = discord.Embed(
@@ -146,7 +146,9 @@ def create_releases_embed(releases: list[ReleaseEvent]) -> discord.Embed | None:
         return None
 
     # Sort by public repos first, then by timestamp (newest first)
-    sorted_releases = sorted(releases, key=lambda release: (release.is_public, release.event_timestamp), reverse=True)
+    sorted_releases = sorted(
+        releases, key=lambda release: (release.is_public, release.event_timestamp), reverse=True
+    )
 
     # Create embed
     embed = discord.Embed(
@@ -203,7 +205,9 @@ def create_reviews_embed(reviews: list[PullRequestReviewEvent]) -> discord.Embed
         return None
 
     # Sort by public repos first, then by timestamp (newest first)
-    sorted_reviews = sorted(reviews, key=lambda review: (review.is_public, review.event_timestamp), reverse=True)
+    sorted_reviews = sorted(
+        reviews, key=lambda review: (review.is_public, review.event_timestamp), reverse=True
+    )
 
     # Create embed
     embed = discord.Embed(
@@ -363,7 +367,9 @@ def create_forks_embed(forks: list[ForkEvent]) -> discord.Embed | None:
         return None
 
     # Sort by public repos first, then by timestamp (newest first)
-    sorted_forks = sorted(forks, key=lambda fork: (fork.is_public, fork.event_timestamp), reverse=True)
+    sorted_forks = sorted(
+        forks, key=lambda fork: (fork.is_public, fork.event_timestamp), reverse=True
+    )
 
     # Create embed
     embed = discord.Embed(

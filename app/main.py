@@ -27,6 +27,8 @@ logger = get_logger(__name__)
 # Module-level variables for lifecycle management
 database_client: DatabaseClient | None = None
 quote_service: QuoteService | None = None
+stats_service: Any | None = None  # Avoid circular import, type is StatsService
+summary_scheduler: Any | None = None  # Avoid circular import, type is SummaryScheduler
 github_client: GitHubClient | None = None
 discord_bot: DiscordBot | None = None
 discord_poster: DiscordPoster | None = None
@@ -195,6 +197,19 @@ async def startup() -> None:
     await quote_service.start()
     set_quote_service(quote_service)
 
+    # Initialize stats service if enabled
+    stats_service = None
+    if settings.enable_stats:
+        from app.stats.service import StatsService, set_stats_service
+
+        stats_service = StatsService(
+            db_client=database_client,
+            refresh_interval_minutes=settings.stats_refresh_interval_minutes,
+        )
+        await stats_service.start()
+        set_stats_service(stats_service)
+        logger.info("stats.service.initialized")
+
     # Initialize GitHub client
     github_client = GitHubClient(settings.github_token)
     await github_client.__aenter__()
@@ -211,8 +226,13 @@ async def startup() -> None:
     # Initialize state manager
     state = StateManager(settings.state_file_path)
 
-    # Initialize Discord bot
-    discord_bot = DiscordBot(settings.discord_token, settings.discord_channel_id)
+    # Initialize Discord bot (with database client for slash commands)
+    discord_bot = DiscordBot(
+        settings.discord_token,
+        settings.discord_channel_id,
+        enable_commands=settings.enable_stats,  # Only enable commands if stats enabled
+        db_client=database_client,
+    )
     await discord_bot.__aenter__()
     logger.info("discord.bot.initialized")
 
@@ -233,18 +253,39 @@ async def startup() -> None:
     )
     await polling_service.start()
 
+    # Initialize summary scheduler if stats enabled
+    summary_scheduler = None
+    if settings.enable_stats:
+        from app.discord.summary_scheduler import SummaryScheduler, set_summary_scheduler
+
+        summary_scheduler = SummaryScheduler(db=database_client, discord_poster=discord_poster)
+        await summary_scheduler.start()
+        set_summary_scheduler(summary_scheduler)
+        logger.info("summary.scheduler.initialized")
+
     logger.info("application.initialization.completed")
 
 
 async def shutdown() -> None:
     """Cleanup on application shutdown."""
-    global database_client, quote_service, github_client, discord_bot, polling_service
+    global \
+        database_client, \
+        quote_service, \
+        stats_service, \
+        summary_scheduler, \
+        github_client, \
+        discord_bot, \
+        polling_service
 
     logger.info("application.shutdown.started")
 
     # Stop polling service
     if polling_service:
         await polling_service.stop()
+
+    # Stop summary scheduler
+    if summary_scheduler:
+        await summary_scheduler.stop()
 
     # Close Discord bot
     if discord_bot:
@@ -253,6 +294,10 @@ async def shutdown() -> None:
     # Close GitHub client
     if github_client:
         await github_client.__aexit__(None, None, None)
+
+    # Stop stats service
+    if stats_service:
+        await stats_service.stop()
 
     # Stop quote service
     if quote_service:

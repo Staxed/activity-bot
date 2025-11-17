@@ -55,6 +55,23 @@ class Settings(BaseSettings):
     # Quote cache settings
     quote_cache_refresh_minutes: int = 60
 
+    # Stats and achievements settings
+    enable_stats: bool = True
+    stats_refresh_interval_minutes: int = 60
+    stats_timezone: str = "America/New_York"
+
+    # Achievement thresholds
+    achievement_night_owl_threshold: int = 5
+    achievement_early_bird_threshold: int = 5
+    achievement_daily_dozen_threshold: int = 12
+    achievement_weekend_warrior_threshold: int = 10
+    achievement_century_month_threshold: int = 100
+
+    # Summary times (HH:MM format)
+    daily_summary_time: str = "09:00"
+    weekly_summary_time: str = "09:00"
+    monthly_summary_time: str = "09:00"
+
     # Application settings
     log_level: str = "INFO"
     state_file_path: str = "data/state.json"
@@ -90,6 +107,28 @@ class Settings(BaseSettings):
         """Validate quote cache refresh interval (1-1440 minutes / 24 hours)."""
         if not 1 <= v <= 1440:
             raise ConfigError(f"Quote refresh interval must be 1-1440 minutes, got {v}")
+        return v
+
+    @field_validator("stats_refresh_interval_minutes")
+    @classmethod
+    def validate_stats_refresh_interval(cls, v: int) -> int:
+        """Validate stats cache refresh interval (1-1440 minutes / 24 hours)."""
+        if not 1 <= v <= 1440:
+            raise ConfigError(f"Stats refresh interval must be 1-1440 minutes, got {v}")
+        return v
+
+    @field_validator(
+        "achievement_night_owl_threshold",
+        "achievement_early_bird_threshold",
+        "achievement_daily_dozen_threshold",
+        "achievement_weekend_warrior_threshold",
+        "achievement_century_month_threshold",
+    )
+    @classmethod
+    def validate_achievement_thresholds(cls, v: int) -> int:
+        """Validate achievement thresholds (1-1000)."""
+        if not 1 <= v <= 1000:
+            raise ConfigError(f"Achievement threshold must be between 1 and 1000, got {v}")
         return v
 
     def model_post_init(self, __context: object) -> None:

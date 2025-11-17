@@ -410,3 +410,38 @@ class DiscordPoster:
                     raise DiscordAPIError(
                         f"Failed to post embed after {self.MAX_RETRIES} retries"
                     ) from e
+
+    async def post_custom_embed(self, embed: discord.Embed) -> None:
+        """Post a custom embed to Discord (for achievements, etc).
+
+        Args:
+            embed: Discord embed to post
+
+        Raises:
+            DiscordAPIError: If posting fails after retries
+        """
+        channel = self.bot.get_channel()
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                await channel.send(embed=embed)
+                logger.info("discord.post.custom.success")
+                return
+
+            except discord.HTTPException as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.RETRY_DELAYS[attempt]
+                    logger.warning(
+                        "discord.post.custom.retry",
+                        attempt=attempt + 1,
+                        delay=delay,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "discord.post.custom.failed",
+                        error=str(e),
+                        exc_info=True,
+                    )
+                    raise DiscordAPIError(f"Failed to post custom embed: {e}") from e
