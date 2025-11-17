@@ -72,7 +72,8 @@ def create_stats_embed(stats: UserStats, timeframe: str = "week") -> discord.Emb
         value=(
             f"💻 {stats.total_commits} commits\n"
             f"🔀 {stats.total_prs} PRs\n"
-            f"🐛 {stats.total_issues} issues"
+            f"🐛 {stats.total_issues} issues\n"
+            f"✅ {stats.total_reviews} reviews"
         ),
         inline=True,
     )
@@ -80,8 +81,9 @@ def create_stats_embed(stats: UserStats, timeframe: str = "week") -> discord.Emb
     embed.add_field(
         name="Other Activity",
         value=(
-            f"✅ {stats.total_reviews} reviews\n"
             f"🚀 {stats.total_releases} releases\n"
+            f"➕ {stats.total_creations} creations\n"
+            f"➖ {stats.total_deletions} deletions\n"
             f"🍴 {stats.total_forks} forks"
         ),
         inline=True,
