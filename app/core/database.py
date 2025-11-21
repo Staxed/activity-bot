@@ -165,7 +165,8 @@ class DatabaseClient:
             commits: List of CommitEvent objects
 
         Returns:
-            Number of rows inserted (excludes duplicates skipped by ON CONFLICT)
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -209,8 +210,7 @@ class DatabaseClient:
                     for c in commits
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_commits.success", total=len(commits))
                 return len(commits)
         except asyncpg.PostgresError as e:
@@ -262,8 +262,7 @@ class DatabaseClient:
                     for pr in prs
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_pull_requests.success", total=len(prs))
                 return len(prs)
         except asyncpg.PostgresError as e:
@@ -305,8 +304,7 @@ class DatabaseClient:
                     for r in reviews
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_pr_reviews.success", total=len(reviews))
                 return len(reviews)
         except asyncpg.PostgresError as e:
@@ -349,8 +347,7 @@ class DatabaseClient:
                     for i in issues
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_issues.success", total=len(issues))
                 return len(issues)
         except asyncpg.PostgresError as e:
@@ -394,8 +391,7 @@ class DatabaseClient:
                     for r in releases
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_releases.success", total=len(releases))
                 return len(releases)
         except asyncpg.PostgresError as e:
@@ -435,8 +431,7 @@ class DatabaseClient:
                     for c in creations
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_creations.success", total=len(creations))
                 return len(creations)
         except asyncpg.PostgresError as e:
@@ -476,8 +471,7 @@ class DatabaseClient:
                     for d in deletions
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_deletions.success", total=len(deletions))
                 return len(deletions)
         except asyncpg.PostgresError as e:
@@ -519,8 +513,7 @@ class DatabaseClient:
                     for f in forks
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_forks.success", total=len(forks))
                 return len(forks)
         except asyncpg.PostgresError as e:
@@ -1192,3 +1185,1043 @@ class DatabaseClient:
         except asyncpg.PostgresError as e:
             logger.error("database.get_unposted_shas.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to get unposted commit SHAs: {e}") from e
+
+    async def insert_stars(self, stars: list[Any]) -> int:
+        """Bulk insert stars with deduplication.
+
+        Args:
+            stars: List of WatchEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not stars:
+            return 0
+
+        query = """
+            INSERT INTO stars (
+                event_id, stargazer_username, stargazer_avatar_url, repo_owner, repo_name,
+                is_public, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        s.event_id,
+                        s.stargazer_username,
+                        s.stargazer_avatar_url,
+                        s.repo_owner,
+                        s.repo_name,
+                        s.is_public,
+                        _to_naive_utc(s.event_timestamp),
+                    )
+                    for s in stars
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_stars.success", total=len(stars))
+                return len(stars)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_stars.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert stars: {e}") from e
+
+    async def insert_issue_comments(self, comments: list[Any]) -> int:
+        """Bulk insert issue comments with deduplication.
+
+        Args:
+            comments: List of IssueCommentEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not comments:
+            return 0
+
+        query = """
+            INSERT INTO issue_comments (
+                event_id, action, issue_number, issue_title, commenter_username,
+                commenter_avatar_url, comment_body, repo_owner, repo_name, is_public,
+                url, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        c.event_id,
+                        c.action,
+                        c.issue_number,
+                        c.issue_title,
+                        c.commenter_username,
+                        c.commenter_avatar_url,
+                        c.comment_body,
+                        c.repo_owner,
+                        c.repo_name,
+                        c.is_public,
+                        c.url,
+                        _to_naive_utc(c.event_timestamp),
+                    )
+                    for c in comments
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_issue_comments.success", total=len(comments))
+                return len(comments)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_issue_comments.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert issue comments: {e}") from e
+
+    async def insert_pr_review_comments(self, comments: list[Any]) -> int:
+        """Bulk insert PR review comments with deduplication.
+
+        Args:
+            comments: List of PullRequestReviewCommentEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not comments:
+            return 0
+
+        query = """
+            INSERT INTO pr_review_comments (
+                event_id, action, pr_number, pr_title, commenter_username,
+                commenter_avatar_url, comment_body, file_path, repo_owner, repo_name,
+                is_public, url, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        c.event_id,
+                        c.action,
+                        c.pr_number,
+                        c.pr_title,
+                        c.commenter_username,
+                        c.commenter_avatar_url,
+                        c.comment_body,
+                        c.file_path,
+                        c.repo_owner,
+                        c.repo_name,
+                        c.is_public,
+                        c.url,
+                        _to_naive_utc(c.event_timestamp),
+                    )
+                    for c in comments
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_pr_review_comments.success", total=len(comments))
+                return len(comments)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_pr_review_comments.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert PR review comments: {e}") from e
+
+    async def insert_commit_comments(self, comments: list[Any]) -> int:
+        """Bulk insert commit comments with deduplication.
+
+        Args:
+            comments: List of CommitCommentEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not comments:
+            return 0
+
+        query = """
+            INSERT INTO commit_comments (
+                event_id, action, commit_sha, short_sha, commenter_username,
+                commenter_avatar_url, comment_body, file_path, repo_owner, repo_name,
+                is_public, url, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        c.event_id,
+                        c.action,
+                        c.commit_sha,
+                        c.short_sha,
+                        c.commenter_username,
+                        c.commenter_avatar_url,
+                        c.comment_body,
+                        c.file_path,
+                        c.repo_owner,
+                        c.repo_name,
+                        c.is_public,
+                        c.url,
+                        _to_naive_utc(c.event_timestamp),
+                    )
+                    for c in comments
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_commit_comments.success", total=len(comments))
+                return len(comments)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_commit_comments.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert commit comments: {e}") from e
+
+    async def insert_members(self, members: list[Any]) -> int:
+        """Bulk insert members with deduplication.
+
+        Args:
+            members: List of MemberEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not members:
+            return 0
+
+        query = """
+            INSERT INTO members (
+                event_id, action, member_username, member_avatar_url, actor_username,
+                repo_owner, repo_name, is_public, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        m.event_id,
+                        m.action,
+                        m.member_username,
+                        m.member_avatar_url,
+                        m.actor_username,
+                        m.repo_owner,
+                        m.repo_name,
+                        m.is_public,
+                        _to_naive_utc(m.event_timestamp),
+                    )
+                    for m in members
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_members.success", total=len(members))
+                return len(members)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_members.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert members: {e}") from e
+
+    async def insert_wiki_pages(self, pages: list[Any]) -> int:
+        """Bulk insert wiki pages with deduplication.
+
+        Args:
+            pages: List of GollumEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not pages:
+            return 0
+
+        query = """
+            INSERT INTO wiki_pages (
+                event_id, action, page_name, page_title, editor_username,
+                editor_avatar_url, repo_owner, repo_name, is_public, url, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        p.event_id,
+                        p.action,
+                        p.page_name,
+                        p.page_title,
+                        p.editor_username,
+                        p.editor_avatar_url,
+                        p.repo_owner,
+                        p.repo_name,
+                        p.is_public,
+                        p.url,
+                        _to_naive_utc(p.event_timestamp),
+                    )
+                    for p in pages
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_wiki_pages.success", total=len(pages))
+                return len(pages)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_wiki_pages.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert wiki pages: {e}") from e
+
+    async def insert_public_events(self, events: list[Any]) -> int:
+        """Bulk insert public events with deduplication.
+
+        Args:
+            events: List of PublicEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not events:
+            return 0
+
+        query = """
+            INSERT INTO public_events (
+                event_id, actor_username, actor_avatar_url, repo_owner, repo_name,
+                event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        e.event_id,
+                        e.actor_username,
+                        e.actor_avatar_url,
+                        e.repo_owner,
+                        e.repo_name,
+                        _to_naive_utc(e.event_timestamp),
+                    )
+                    for e in events
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_public_events.success", total=len(events))
+                return len(events)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_public_events.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert public events: {e}") from e
+
+    async def insert_discussions(self, discussions: list[Any]) -> int:
+        """Bulk insert discussions with deduplication.
+
+        Args:
+            discussions: List of DiscussionEvent objects
+
+        Returns:
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not discussions:
+            return 0
+
+        query = """
+            INSERT INTO discussions (
+                event_id, action, discussion_number, discussion_title, category,
+                author_username, author_avatar_url, repo_owner, repo_name, is_public,
+                url, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (event_id) DO NOTHING
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                data = [
+                    (
+                        d.event_id,
+                        d.action,
+                        d.discussion_number,
+                        d.discussion_title,
+                        d.category,
+                        d.author_username,
+                        d.author_avatar_url,
+                        d.repo_owner,
+                        d.repo_name,
+                        d.is_public,
+                        d.url,
+                        _to_naive_utc(d.event_timestamp),
+                    )
+                    for d in discussions
+                ]
+                await conn.executemany(query, data)
+                logger.info("database.insert_discussions.success", total=len(discussions))
+                return len(discussions)
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_discussions.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert discussions: {e}") from e
+
+    async def get_unposted_stars(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted stars within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of stars to retrieve (default 12 hours)
+
+        Returns:
+            List of WatchEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import WatchEvent
+
+        query = """
+            SELECT * FROM stars
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                stars = [
+                    WatchEvent(
+                        event_id=row["event_id"],
+                        stargazer_username=row["stargazer_username"],
+                        stargazer_avatar_url=row["stargazer_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_stars.success", count=len(stars))
+                return stars
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_stars.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted stars: {e}") from e
+
+    async def get_unposted_issue_comments(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted issue comments within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of comments to retrieve (default 12 hours)
+
+        Returns:
+            List of IssueCommentEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import IssueCommentEvent
+
+        query = """
+            SELECT * FROM issue_comments
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                comments = [
+                    IssueCommentEvent(
+                        event_id=row["event_id"],
+                        action=row["action"],
+                        issue_number=row["issue_number"],
+                        issue_title=row["issue_title"],
+                        commenter_username=row["commenter_username"],
+                        commenter_avatar_url=row["commenter_avatar_url"] or "",
+                        comment_body=row["comment_body"],
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_issue_comments.success", count=len(comments))
+                return comments
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_issue_comments.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted issue comments: {e}") from e
+
+    async def get_unposted_pr_review_comments(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted PR review comments within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of comments to retrieve (default 12 hours)
+
+        Returns:
+            List of PullRequestReviewCommentEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import PullRequestReviewCommentEvent
+
+        query = """
+            SELECT * FROM pr_review_comments
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                comments = [
+                    PullRequestReviewCommentEvent(
+                        event_id=row["event_id"],
+                        action=row["action"],
+                        pr_number=row["pr_number"],
+                        pr_title=row["pr_title"],
+                        commenter_username=row["commenter_username"],
+                        commenter_avatar_url=row["commenter_avatar_url"] or "",
+                        comment_body=row["comment_body"],
+                        file_path=row["file_path"],
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_pr_review_comments.success", count=len(comments))
+                return comments
+        except asyncpg.PostgresError as e:
+            logger.error(
+                "database.get_unposted_pr_review_comments.failed", error=str(e), exc_info=True
+            )
+            raise DatabaseError(f"Failed to get unposted PR review comments: {e}") from e
+
+    async def get_unposted_commit_comments(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted commit comments within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of comments to retrieve (default 12 hours)
+
+        Returns:
+            List of CommitCommentEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import CommitCommentEvent
+
+        query = """
+            SELECT * FROM commit_comments
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                comments = [
+                    CommitCommentEvent(
+                        event_id=row["event_id"],
+                        action=row["action"],
+                        commit_sha=row["commit_sha"],
+                        short_sha=row["short_sha"],
+                        commenter_username=row["commenter_username"],
+                        commenter_avatar_url=row["commenter_avatar_url"] or "",
+                        comment_body=row["comment_body"],
+                        file_path=row["file_path"],
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_commit_comments.success", count=len(comments))
+                return comments
+        except asyncpg.PostgresError as e:
+            logger.error(
+                "database.get_unposted_commit_comments.failed", error=str(e), exc_info=True
+            )
+            raise DatabaseError(f"Failed to get unposted commit comments: {e}") from e
+
+    async def get_unposted_members(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted member events within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of members to retrieve (default 12 hours)
+
+        Returns:
+            List of MemberEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import MemberEvent
+
+        query = """
+            SELECT * FROM members
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                members = [
+                    MemberEvent(
+                        event_id=row["event_id"],
+                        action=row["action"],
+                        member_username=row["member_username"],
+                        member_avatar_url=row["member_avatar_url"] or "",
+                        actor_username=row["actor_username"],
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_members.success", count=len(members))
+                return members
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_members.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted members: {e}") from e
+
+    async def get_unposted_wiki_pages(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted wiki pages within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of pages to retrieve (default 12 hours)
+
+        Returns:
+            List of GollumEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import GollumEvent
+
+        query = """
+            SELECT * FROM wiki_pages
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                pages = [
+                    GollumEvent(
+                        event_id=row["event_id"],
+                        action=row["action"],
+                        page_name=row["page_name"],
+                        page_title=row["page_title"],
+                        editor_username=row["editor_username"],
+                        editor_avatar_url=row["editor_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_wiki_pages.success", count=len(pages))
+                return pages
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_wiki_pages.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted wiki pages: {e}") from e
+
+    async def get_unposted_public_events(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted public events within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of events to retrieve (default 12 hours)
+
+        Returns:
+            List of PublicEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import PublicEvent
+
+        query = """
+            SELECT * FROM public_events
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                events = [
+                    PublicEvent(
+                        event_id=row["event_id"],
+                        actor_username=row["actor_username"],
+                        actor_avatar_url=row["actor_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_public_events.success", count=len(events))
+                return events
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_public_events.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted public events: {e}") from e
+
+    async def get_unposted_discussions(self, max_age_hours: int = 12) -> list[Any]:
+        """Get unposted discussions within time window for recovery.
+
+        Args:
+            max_age_hours: Maximum age of discussions to retrieve (default 12 hours)
+
+        Returns:
+            List of DiscussionEvent objects reconstructed from database rows
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.shared.models import DiscussionEvent
+
+        query = """
+            SELECT * FROM discussions
+            WHERE posted_to_discord = FALSE
+              AND created_at > NOW() - $1::interval
+            ORDER BY event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                discussions = [
+                    DiscussionEvent(
+                        event_id=row["event_id"],
+                        action=row["action"],
+                        discussion_number=row["discussion_number"],
+                        discussion_title=row["discussion_title"],
+                        category=row["category"],
+                        author_username=row["author_username"],
+                        author_avatar_url=row["author_avatar_url"] or "",
+                        repo_owner=row["repo_owner"],
+                        repo_name=row["repo_name"],
+                        is_public=row["is_public"],
+                        url=row["url"] or "",
+                        event_timestamp=row["event_timestamp"],
+                    )
+                    for row in rows
+                ]
+                logger.info("database.get_unposted_discussions.success", count=len(discussions))
+                return discussions
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_discussions.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted discussions: {e}") from e
+
+    async def mark_stars_posted(self, event_ids: list[str]) -> None:
+        """Mark stars as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE stars
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_stars_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_stars_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark stars as posted: {e}") from e
+
+    async def mark_issue_comments_posted(self, event_ids: list[str]) -> None:
+        """Mark issue comments as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE issue_comments
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_issue_comments_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_issue_comments_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark issue comments as posted: {e}") from e
+
+    async def mark_pr_review_comments_posted(self, event_ids: list[str]) -> None:
+        """Mark PR review comments as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE pr_review_comments
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_pr_review_comments_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error(
+                "database.mark_pr_review_comments_posted.failed", error=str(e), exc_info=True
+            )
+            raise DatabaseError(f"Failed to mark PR review comments as posted: {e}") from e
+
+    async def mark_commit_comments_posted(self, event_ids: list[str]) -> None:
+        """Mark commit comments as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE commit_comments
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_commit_comments_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_commit_comments_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark commit comments as posted: {e}") from e
+
+    async def mark_members_posted(self, event_ids: list[str]) -> None:
+        """Mark member events as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE members
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_members_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_members_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark members as posted: {e}") from e
+
+    async def mark_wiki_pages_posted(self, event_ids: list[str]) -> None:
+        """Mark wiki pages as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE wiki_pages
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_wiki_pages_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_wiki_pages_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark wiki pages as posted: {e}") from e
+
+    async def mark_public_events_posted(self, event_ids: list[str]) -> None:
+        """Mark public events as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE public_events
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_public_events_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_public_events_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark public events as posted: {e}") from e
+
+    async def mark_discussions_posted(self, event_ids: list[str]) -> None:
+        """Mark discussions as posted to Discord.
+
+        Args:
+            event_ids: List of event IDs to mark as posted
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        if not event_ids:
+            return
+
+        query = """
+            UPDATE discussions
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE event_id = ANY($1::text[])
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, event_ids)
+                logger.info("database.mark_discussions_posted.success", count=len(event_ids))
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_discussions_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark discussions as posted: {e}") from e

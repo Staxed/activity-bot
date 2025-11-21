@@ -10,26 +10,42 @@ from app.core.logging import get_logger
 from app.discord.bot import DiscordBot
 from app.discord.embeds import create_commits_embed
 from app.discord.event_embeds import (
+    create_commit_comments_embed,
     create_creations_embed,
     create_deletions_embed,
+    create_discussions_embed,
     create_forks_embed,
+    create_issue_comments_embed,
     create_issues_embed,
+    create_members_embed,
+    create_pr_review_comments_embed,
     create_prs_embed,
+    create_public_events_embed,
     create_releases_embed,
     create_reviews_embed,
+    create_stars_embed,
+    create_wiki_pages_embed,
 )
 from app.discord.event_grouping import UserEvents, group_events_by_user
 from app.discord.summary_embed import create_summary_embed
 from app.shared.exceptions import DiscordAPIError
 from app.shared.models import (
+    CommitCommentEvent,
     CommitEvent,
     CreateEvent,
     DeleteEvent,
+    DiscussionEvent,
     ForkEvent,
+    GollumEvent,
+    IssueCommentEvent,
     IssuesEvent,
+    MemberEvent,
+    PublicEvent,
     PullRequestEvent,
+    PullRequestReviewCommentEvent,
     PullRequestReviewEvent,
     ReleaseEvent,
+    WatchEvent,
 )
 
 logger = get_logger(__name__)
@@ -70,6 +86,14 @@ class DiscordPoster:
             creations=[],
             deletions=[],
             forks=[],
+            stars=[],
+            issue_comments=[],
+            pr_review_comments=[],
+            commit_comments=[],
+            members=[],
+            wiki_pages=[],
+            public_events=[],
+            discussions=[],
             settings=Settings(),  # type: ignore[call-arg]
         )
 
@@ -83,6 +107,14 @@ class DiscordPoster:
         creations: list[CreateEvent],
         deletions: list[DeleteEvent],
         forks: list[ForkEvent],
+        stars: list[WatchEvent],
+        issue_comments: list[IssueCommentEvent],
+        pr_review_comments: list[PullRequestReviewCommentEvent],
+        commit_comments: list[CommitCommentEvent],
+        members: list[MemberEvent],
+        wiki_pages: list[GollumEvent],
+        public_events: list[PublicEvent],
+        discussions: list[DiscussionEvent],
         settings: Settings,
     ) -> None:
         """Post all event types to Discord, grouped by user.
@@ -96,11 +128,34 @@ class DiscordPoster:
             creations: List of creation events
             deletions: List of deletion events
             forks: List of fork events
+            stars: List of watch/star events
+            issue_comments: List of issue comment events
+            pr_review_comments: List of PR review comment events
+            commit_comments: List of commit comment events
+            members: List of member events
+            wiki_pages: List of wiki page (Gollum) events
+            public_events: List of public events
+            discussions: List of discussion events
             settings: Settings instance for event toggles
         """
         # Group events by user
         grouped_events = group_events_by_user(
-            commits, prs, issues, releases, reviews, creations, deletions, forks
+            commits,
+            prs,
+            issues,
+            releases,
+            reviews,
+            creations,
+            deletions,
+            forks,
+            stars,
+            issue_comments,
+            pr_review_comments,
+            commit_comments,
+            members,
+            wiki_pages,
+            public_events,
+            discussions,
         )
 
         if not grouped_events:
@@ -130,6 +185,14 @@ class DiscordPoster:
                     "creations": len(events.creations),
                     "deletions": len(events.deletions),
                     "forks": len(events.forks),
+                    "stars": len(events.stars),
+                    "issue_comments": len(events.issue_comments),
+                    "pr_review_comments": len(events.pr_review_comments),
+                    "commit_comments": len(events.commit_comments),
+                    "members": len(events.members),
+                    "wiki_pages": len(events.wiki_pages),
+                    "public_events": len(events.public_events),
+                    "discussions": len(events.discussions),
                 }
 
                 # Add summary embed
@@ -178,6 +241,48 @@ class DiscordPoster:
                     deletion_embed = create_deletions_embed(events.deletions)
                     if deletion_embed:
                         embeds.append(deletion_embed)
+
+                if settings.post_stars and events.stars:
+                    star_embed = create_stars_embed(events.stars)
+                    if star_embed:
+                        embeds.append(star_embed)
+
+                if settings.post_issue_comments and events.issue_comments:
+                    issue_comment_embed = create_issue_comments_embed(events.issue_comments)
+                    if issue_comment_embed:
+                        embeds.append(issue_comment_embed)
+
+                if settings.post_pr_review_comments and events.pr_review_comments:
+                    pr_review_comment_embed = create_pr_review_comments_embed(
+                        events.pr_review_comments
+                    )
+                    if pr_review_comment_embed:
+                        embeds.append(pr_review_comment_embed)
+
+                if settings.post_commit_comments and events.commit_comments:
+                    commit_comment_embed = create_commit_comments_embed(events.commit_comments)
+                    if commit_comment_embed:
+                        embeds.append(commit_comment_embed)
+
+                if settings.post_members and events.members:
+                    member_embed = create_members_embed(events.members)
+                    if member_embed:
+                        embeds.append(member_embed)
+
+                if settings.post_wiki_pages and events.wiki_pages:
+                    wiki_embed = create_wiki_pages_embed(events.wiki_pages)
+                    if wiki_embed:
+                        embeds.append(wiki_embed)
+
+                if settings.post_public_events and events.public_events:
+                    public_embed = create_public_events_embed(events.public_events)
+                    if public_embed:
+                        embeds.append(public_embed)
+
+                if settings.post_discussions and events.discussions:
+                    discussion_embed = create_discussions_embed(events.discussions)
+                    if discussion_embed:
+                        embeds.append(discussion_embed)
 
                 # Enforce 10-embed limit
                 if len(embeds) > 10:
@@ -261,6 +366,46 @@ class DiscordPoster:
             repo_key = f"{fork.source_repo_owner}/{fork.source_repo_name}"
             repos[repo_key] = fork.is_public
 
+        # Extract from stars
+        for star in events.stars:
+            repo_key = f"{star.repo_owner}/{star.repo_name}"
+            repos[repo_key] = star.is_public
+
+        # Extract from issue comments
+        for comment in events.issue_comments:
+            repo_key = f"{comment.repo_owner}/{comment.repo_name}"
+            repos[repo_key] = comment.is_public
+
+        # Extract from PR review comments
+        for comment in events.pr_review_comments:
+            repo_key = f"{comment.repo_owner}/{comment.repo_name}"
+            repos[repo_key] = comment.is_public
+
+        # Extract from commit comments
+        for comment in events.commit_comments:
+            repo_key = f"{comment.repo_owner}/{comment.repo_name}"
+            repos[repo_key] = comment.is_public
+
+        # Extract from members
+        for member in events.members:
+            repo_key = f"{member.repo_owner}/{member.repo_name}"
+            repos[repo_key] = member.is_public
+
+        # Extract from wiki pages
+        for wiki in events.wiki_pages:
+            repo_key = f"{wiki.repo_owner}/{wiki.repo_name}"
+            repos[repo_key] = wiki.is_public
+
+        # Extract from public events
+        for public in events.public_events:
+            repo_key = f"{public.repo_owner}/{public.repo_name}"
+            repos[repo_key] = public.is_public
+
+        # Extract from discussions
+        for discussion in events.discussions:
+            repo_key = f"{discussion.repo_owner}/{discussion.repo_name}"
+            repos[repo_key] = discussion.is_public
+
         # Sort: public repos first, then private repos (alphabetically within each group)
         sorted_repos = sorted(repos.items(), key=lambda x: (not x[1], x[0]))
         return sorted_repos
@@ -292,6 +437,22 @@ class DiscordPoster:
             timestamps.append(deletion.event_timestamp)
         for fork in events.forks:
             timestamps.append(fork.event_timestamp)
+        for star in events.stars:
+            timestamps.append(star.event_timestamp)
+        for comment in events.issue_comments:
+            timestamps.append(comment.event_timestamp)
+        for comment in events.pr_review_comments:
+            timestamps.append(comment.event_timestamp)
+        for comment in events.commit_comments:
+            timestamps.append(comment.event_timestamp)
+        for member in events.members:
+            timestamps.append(member.event_timestamp)
+        for wiki in events.wiki_pages:
+            timestamps.append(wiki.event_timestamp)
+        for public in events.public_events:
+            timestamps.append(public.event_timestamp)
+        for discussion in events.discussions:
+            timestamps.append(discussion.event_timestamp)
 
         return max(timestamps) if timestamps else datetime.now()
 
@@ -335,6 +496,38 @@ class DiscordPoster:
         # Try forks
         if events.forks:
             return events.forks[0].forker_avatar_url
+
+        # Try stars
+        if events.stars:
+            return events.stars[0].actor_avatar_url
+
+        # Try issue comments
+        if events.issue_comments:
+            return events.issue_comments[0].commenter_avatar_url
+
+        # Try PR review comments
+        if events.pr_review_comments:
+            return events.pr_review_comments[0].commenter_avatar_url
+
+        # Try commit comments
+        if events.commit_comments:
+            return events.commit_comments[0].commenter_avatar_url
+
+        # Try members
+        if events.members:
+            return events.members[0].actor_avatar_url
+
+        # Try wiki pages
+        if events.wiki_pages:
+            return events.wiki_pages[0].actor_avatar_url
+
+        # Try public events
+        if events.public_events:
+            return events.public_events[0].actor_avatar_url
+
+        # Try discussions
+        if events.discussions:
+            return events.discussions[0].actor_avatar_url
 
         # Fallback
         return "https://github.com/github.png"

@@ -5,6 +5,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+# Maximum length for comment bodies to prevent overly long embeds
+MAX_COMMENT_BODY_LENGTH = 500
+
 
 class CommitEvent(BaseModel):
     """Internal representation of a GitHub commit event.
@@ -643,5 +646,551 @@ class ForkEvent(BaseModel):
             fork_repo_name=forkee["name"],
             is_public=event.get("public", True),
             fork_url=forkee.get("html_url"),
+            event_timestamp=timestamp,
+        )
+
+
+class WatchEvent(BaseModel):
+    """Internal representation of a GitHub watch (star) event.
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        stargazer_username: GitHub username who starred the repo
+        stargazer_avatar_url: GitHub avatar URL
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        is_public: Whether the repository is public
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    stargazer_username: str = Field(..., description="Stargazer username")
+    stargazer_avatar_url: str = Field(..., description="Stargazer avatar URL")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    is_public: bool = Field(True, description="Whether repository is public")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "WatchEvent":
+        """Parse GitHub WatchEvent into model.
+
+        Args:
+            event: GitHub WatchEvent from Events API
+
+        Returns:
+            WatchEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        return cls(
+            event_id=event["id"],
+            stargazer_username=event["actor"]["login"],
+            stargazer_avatar_url=event["actor"]["avatar_url"],
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            is_public=event.get("public", True),
+            event_timestamp=timestamp,
+        )
+
+
+class IssueCommentEvent(BaseModel):
+    """Internal representation of a GitHub issue comment event.
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        action: Action performed (created, edited, deleted)
+        issue_number: Issue number
+        issue_title: Issue title
+        commenter_username: GitHub username who commented
+        commenter_avatar_url: GitHub avatar URL
+        comment_body: Comment text (truncated to 500 chars)
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        is_public: Whether the repository is public
+        url: Comment URL
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    action: str = Field(..., description="Action (created, edited, deleted)")
+    issue_number: int = Field(..., description="Issue number")
+    issue_title: str | None = Field(None, description="Issue title")
+    commenter_username: str = Field(..., description="Commenter username")
+    commenter_avatar_url: str = Field(..., description="Commenter avatar URL")
+    comment_body: str | None = Field(None, description="Comment text (truncated to 500 chars)")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    is_public: bool = Field(True, description="Whether repository is public")
+    url: str | None = Field(None, description="Comment URL")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "IssueCommentEvent":
+        """Parse GitHub IssueCommentEvent into model.
+
+        Args:
+            event: GitHub IssueCommentEvent from Events API
+
+        Returns:
+            IssueCommentEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        payload = event["payload"]
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        # Truncate comment body to prevent overly long embeds
+        comment_body = payload.get("comment", {}).get("body")
+        if comment_body and len(comment_body) > MAX_COMMENT_BODY_LENGTH:
+            comment_body = comment_body[: MAX_COMMENT_BODY_LENGTH - 3] + "..."
+
+        return cls(
+            event_id=event["id"],
+            action=payload["action"],
+            issue_number=payload["issue"]["number"],
+            issue_title=payload["issue"].get("title"),
+            commenter_username=event["actor"]["login"],
+            commenter_avatar_url=event["actor"]["avatar_url"],
+            comment_body=comment_body,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            is_public=event.get("public", True),
+            url=payload.get("comment", {}).get("html_url"),
+            event_timestamp=timestamp,
+        )
+
+
+class PullRequestReviewCommentEvent(BaseModel):
+    """Internal representation of a GitHub PR review comment event.
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        action: Action performed (created, edited, deleted)
+        pr_number: Pull request number
+        pr_title: Pull request title
+        commenter_username: GitHub username who commented
+        commenter_avatar_url: GitHub avatar URL
+        comment_body: Comment text (truncated to 500 chars)
+        file_path: File path the comment is on
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        is_public: Whether the repository is public
+        url: Comment URL
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    action: str = Field(..., description="Action (created, edited, deleted)")
+    pr_number: int = Field(..., description="PR number")
+    pr_title: str | None = Field(None, description="PR title")
+    commenter_username: str = Field(..., description="Commenter username")
+    commenter_avatar_url: str = Field(..., description="Commenter avatar URL")
+    comment_body: str | None = Field(None, description="Comment text (truncated to 500 chars)")
+    file_path: str | None = Field(None, description="File path commented on")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    is_public: bool = Field(True, description="Whether repository is public")
+    url: str | None = Field(None, description="Comment URL")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "PullRequestReviewCommentEvent":
+        """Parse GitHub PullRequestReviewCommentEvent into model.
+
+        Args:
+            event: GitHub PullRequestReviewCommentEvent from Events API
+
+        Returns:
+            PullRequestReviewCommentEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        payload = event["payload"]
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        # Truncate comment body to prevent overly long embeds
+        comment_body = payload.get("comment", {}).get("body")
+        if comment_body and len(comment_body) > MAX_COMMENT_BODY_LENGTH:
+            comment_body = comment_body[: MAX_COMMENT_BODY_LENGTH - 3] + "..."
+
+        return cls(
+            event_id=event["id"],
+            action=payload["action"],
+            pr_number=payload["pull_request"]["number"],
+            pr_title=payload["pull_request"].get("title"),
+            commenter_username=event["actor"]["login"],
+            commenter_avatar_url=event["actor"]["avatar_url"],
+            comment_body=comment_body,
+            file_path=payload.get("comment", {}).get("path"),
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            is_public=event.get("public", True),
+            url=payload.get("comment", {}).get("html_url"),
+            event_timestamp=timestamp,
+        )
+
+
+class CommitCommentEvent(BaseModel):
+    """Internal representation of a GitHub commit comment event.
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        action: Action performed (created)
+        commit_sha: Full commit SHA
+        short_sha: Short (7-char) commit SHA
+        commenter_username: GitHub username who commented
+        commenter_avatar_url: GitHub avatar URL
+        comment_body: Comment text (truncated to 500 chars)
+        file_path: File path the comment is on
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        is_public: Whether the repository is public
+        url: Comment URL
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    action: str = Field(..., description="Action (created)")
+    commit_sha: str = Field(..., description="Full commit SHA")
+    short_sha: str = Field(..., description="Short (7-char) commit SHA")
+    commenter_username: str = Field(..., description="Commenter username")
+    commenter_avatar_url: str = Field(..., description="Commenter avatar URL")
+    comment_body: str | None = Field(None, description="Comment text (truncated to 500 chars)")
+    file_path: str | None = Field(None, description="File path commented on")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    is_public: bool = Field(True, description="Whether repository is public")
+    url: str | None = Field(None, description="Comment URL")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "CommitCommentEvent":
+        """Parse GitHub CommitCommentEvent into model.
+
+        Args:
+            event: GitHub CommitCommentEvent from Events API
+
+        Returns:
+            CommitCommentEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        payload = event["payload"]
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        # Truncate comment body to prevent overly long embeds
+        comment_body = payload.get("comment", {}).get("body")
+        if comment_body and len(comment_body) > MAX_COMMENT_BODY_LENGTH:
+            comment_body = comment_body[: MAX_COMMENT_BODY_LENGTH - 3] + "..."
+
+        commit_sha = payload["comment"]["commit_id"]
+
+        return cls(
+            event_id=event["id"],
+            action="created",  # CommitCommentEvent only has 'created' action
+            commit_sha=commit_sha,
+            short_sha=commit_sha[:7],
+            commenter_username=event["actor"]["login"],
+            commenter_avatar_url=event["actor"]["avatar_url"],
+            comment_body=comment_body,
+            file_path=payload.get("comment", {}).get("path"),
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            is_public=event.get("public", True),
+            url=payload.get("comment", {}).get("html_url"),
+            event_timestamp=timestamp,
+        )
+
+
+class MemberEvent(BaseModel):
+    """Internal representation of a GitHub member event.
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        action: Action performed (added, removed, edited)
+        member_username: GitHub username of member being managed
+        member_avatar_url: Member's avatar URL
+        actor_username: GitHub username who performed the action
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        is_public: Whether the repository is public
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    action: str = Field(..., description="Action (added, removed, edited)")
+    member_username: str = Field(..., description="Member username")
+    member_avatar_url: str = Field(..., description="Member avatar URL")
+    actor_username: str = Field(..., description="Actor username")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    is_public: bool = Field(True, description="Whether repository is public")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "MemberEvent":
+        """Parse GitHub MemberEvent into model.
+
+        Args:
+            event: GitHub MemberEvent from Events API
+
+        Returns:
+            MemberEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        payload = event["payload"]
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        return cls(
+            event_id=event["id"],
+            action=payload["action"],
+            member_username=payload["member"]["login"],
+            member_avatar_url=payload["member"]["avatar_url"],
+            actor_username=event["actor"]["login"],
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            is_public=event.get("public", True),
+            event_timestamp=timestamp,
+        )
+
+
+class GollumEvent(BaseModel):
+    """Internal representation of a GitHub Gollum (wiki) event.
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        action: Action performed (created, edited)
+        page_name: Wiki page name
+        page_title: Wiki page title
+        editor_username: GitHub username who edited the wiki
+        editor_avatar_url: Editor's avatar URL
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        is_public: Whether the repository is public
+        url: Wiki page URL
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    action: str = Field(..., description="Action (created, edited)")
+    page_name: str = Field(..., description="Wiki page name")
+    page_title: str | None = Field(None, description="Wiki page title")
+    editor_username: str = Field(..., description="Editor username")
+    editor_avatar_url: str = Field(..., description="Editor avatar URL")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    is_public: bool = Field(True, description="Whether repository is public")
+    url: str | None = Field(None, description="Wiki page URL")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "GollumEvent":
+        """Parse GitHub GollumEvent into model.
+
+        Args:
+            event: GitHub GollumEvent from Events API
+
+        Returns:
+            GollumEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        payload = event["payload"]
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        # GollumEvent can have multiple pages - take first page only
+        pages = payload.get("pages", [])
+        if not pages:
+            # Import logger locally to avoid circular dependency
+            from app.core.logging import get_logger
+
+            logger = get_logger(__name__)
+            logger.warning("github.parse.gollum.no_pages", event_id=event.get("id"))
+            raise ValueError("GollumEvent has no pages")
+
+        first_page = pages[0]
+
+        # Log if multiple pages were edited (we only process the first)
+        if len(pages) > 1:
+            from app.core.logging import get_logger
+
+            logger = get_logger(__name__)
+            logger.info(
+                "github.parse.gollum.multiple_pages",
+                event_id=event.get("id"),
+                total_pages=len(pages),
+                processed=1,
+            )
+
+        return cls(
+            event_id=event["id"],
+            action=first_page["action"],
+            page_name=first_page["page_name"],
+            page_title=first_page.get("title"),
+            editor_username=event["actor"]["login"],
+            editor_avatar_url=event["actor"]["avatar_url"],
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            is_public=event.get("public", True),
+            url=first_page.get("html_url"),
+            event_timestamp=timestamp,
+        )
+
+
+class PublicEvent(BaseModel):
+    """Internal representation of a GitHub public event (repo made public).
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        actor_username: GitHub username who made repo public
+        actor_avatar_url: Actor's avatar URL
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    actor_username: str = Field(..., description="Actor username")
+    actor_avatar_url: str = Field(..., description="Actor avatar URL")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "PublicEvent":
+        """Parse GitHub PublicEvent into model.
+
+        Args:
+            event: GitHub PublicEvent from Events API
+
+        Returns:
+            PublicEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        return cls(
+            event_id=event["id"],
+            actor_username=event["actor"]["login"],
+            actor_avatar_url=event["actor"]["avatar_url"],
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            event_timestamp=timestamp,
+        )
+
+
+class DiscussionEvent(BaseModel):
+    """Internal representation of a GitHub discussion event.
+
+    Attributes:
+        event_id: GitHub event ID for deduplication
+        action: Action performed (created, edited, deleted, answered, etc.)
+        discussion_number: Discussion number
+        discussion_title: Discussion title
+        category: Discussion category
+        author_username: GitHub username who created/modified the discussion
+        author_avatar_url: Author's avatar URL
+        repo_owner: Repository owner username
+        repo_name: Repository name
+        is_public: Whether the repository is public
+        url: Discussion URL
+        event_timestamp: Event timestamp
+    """
+
+    event_id: str = Field(..., description="GitHub event ID")
+    action: str = Field(..., description="Action (created, edited, deleted, answered, etc.)")
+    discussion_number: int = Field(..., description="Discussion number")
+    discussion_title: str | None = Field(None, description="Discussion title")
+    category: str | None = Field(None, description="Discussion category")
+    author_username: str = Field(..., description="Author username")
+    author_avatar_url: str = Field(..., description="Author avatar URL")
+    repo_owner: str = Field(..., description="Repository owner")
+    repo_name: str = Field(..., description="Repository name")
+    is_public: bool = Field(True, description="Whether repository is public")
+    url: str | None = Field(None, description="Discussion URL")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+
+    @classmethod
+    def from_github_event(cls, event: dict[str, Any]) -> "DiscussionEvent":
+        """Parse GitHub DiscussionEvent into model.
+
+        Args:
+            event: GitHub DiscussionEvent from Events API
+
+        Returns:
+            DiscussionEvent instance with parsed data
+        """
+        repo_full_name = event["repo"]["name"]
+        repo_owner, repo_name = repo_full_name.split("/", 1)
+
+        payload = event["payload"]
+        # Parse timestamp from ISO format and ensure it's timezone-aware
+        timestamp_str = event["created_at"].replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        # Ensure timezone-aware by adding UTC if naive
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+
+        discussion = payload.get("discussion", {})
+
+        return cls(
+            event_id=event["id"],
+            action=payload["action"],
+            discussion_number=discussion.get("number", 0),
+            discussion_title=discussion.get("title"),
+            category=discussion.get("category", {}).get("name"),
+            author_username=event["actor"]["login"],
+            author_avatar_url=event["actor"]["avatar_url"],
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            is_public=event.get("public", True),
+            url=discussion.get("html_url"),
             event_timestamp=timestamp,
         )

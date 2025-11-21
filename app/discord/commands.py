@@ -246,7 +246,9 @@ class StatsCommands(app_commands.Group, name="activity"):
                 repeatable_achievements = []
                 for ach_id, ach in all_achievements.items():
                     if ach.achievement_type == "repeatable":
-                        count_row = await conn.fetchval(GET_ACHIEVEMENT_COUNT, target_username, ach_id)
+                        count_row = await conn.fetchval(
+                            GET_ACHIEVEMENT_COUNT, target_username, ach_id
+                        )
                         if count_row and count_row > 0:
                             repeatable_achievements.append((ach.emoji, ach.name, count_row))
 

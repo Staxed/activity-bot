@@ -3,14 +3,22 @@
 from dataclasses import dataclass, field
 
 from app.shared.models import (
+    CommitCommentEvent,
     CommitEvent,
     CreateEvent,
     DeleteEvent,
+    DiscussionEvent,
     ForkEvent,
+    GollumEvent,
+    IssueCommentEvent,
     IssuesEvent,
+    MemberEvent,
+    PublicEvent,
     PullRequestEvent,
+    PullRequestReviewCommentEvent,
     PullRequestReviewEvent,
     ReleaseEvent,
+    WatchEvent,
 )
 
 
@@ -26,6 +34,14 @@ class UserEvents:
     creations: list[CreateEvent] = field(default_factory=list)
     deletions: list[DeleteEvent] = field(default_factory=list)
     forks: list[ForkEvent] = field(default_factory=list)
+    stars: list[WatchEvent] = field(default_factory=list)
+    issue_comments: list[IssueCommentEvent] = field(default_factory=list)
+    pr_review_comments: list[PullRequestReviewCommentEvent] = field(default_factory=list)
+    commit_comments: list[CommitCommentEvent] = field(default_factory=list)
+    members: list[MemberEvent] = field(default_factory=list)
+    wiki_pages: list[GollumEvent] = field(default_factory=list)
+    public_events: list[PublicEvent] = field(default_factory=list)
+    discussions: list[DiscussionEvent] = field(default_factory=list)
 
 
 def group_events_by_user(
@@ -37,6 +53,14 @@ def group_events_by_user(
     creations: list[CreateEvent],
     deletions: list[DeleteEvent],
     forks: list[ForkEvent],
+    stars: list[WatchEvent],
+    issue_comments: list[IssueCommentEvent],
+    pr_review_comments: list[PullRequestReviewCommentEvent],
+    commit_comments: list[CommitCommentEvent],
+    members: list[MemberEvent],
+    wiki_pages: list[GollumEvent],
+    public_events: list[PublicEvent],
+    discussions: list[DiscussionEvent],
 ) -> dict[str, UserEvents]:
     """Group all event types by user.
 
@@ -49,6 +73,14 @@ def group_events_by_user(
         creations: List of creation events
         deletions: List of deletion events
         forks: List of fork events
+        stars: List of star (watch) events
+        issue_comments: List of issue comment events
+        pr_review_comments: List of PR review comment events
+        commit_comments: List of commit comment events
+        members: List of member events
+        wiki_pages: List of wiki page (Gollum) events
+        public_events: List of public events
+        discussions: List of discussion events
 
     Returns:
         Dict mapping username to UserEvents containing all their events
@@ -62,7 +94,15 @@ def group_events_by_user(
         ...     reviews=[],
         ...     creations=[],
         ...     deletions=[],
-        ...     forks=[]
+        ...     forks=[],
+        ...     stars=[],
+        ...     issue_comments=[],
+        ...     pr_review_comments=[],
+        ...     commit_comments=[],
+        ...     members=[],
+        ...     wiki_pages=[],
+        ...     public_events=[],
+        ...     discussions=[]
         ... )
         >>> # {"staxed": UserEvents(commits=[...], prs=[...], ...)}
     """
@@ -123,5 +163,61 @@ def group_events_by_user(
         if username not in user_events:
             user_events[username] = UserEvents()
         user_events[username].forks.append(fork)
+
+    # Group stars by stargazer
+    for star in stars:
+        username = star.stargazer_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].stars.append(star)
+
+    # Group issue comments by commenter
+    for comment in issue_comments:
+        username = comment.commenter_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].issue_comments.append(comment)
+
+    # Group PR review comments by commenter
+    for comment in pr_review_comments:
+        username = comment.commenter_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].pr_review_comments.append(comment)
+
+    # Group commit comments by commenter
+    for comment in commit_comments:
+        username = comment.commenter_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].commit_comments.append(comment)
+
+    # Group members by actor (who performed the action)
+    for member in members:
+        username = member.actor_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].members.append(member)
+
+    # Group wiki pages by editor
+    for wiki in wiki_pages:
+        username = wiki.editor_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].wiki_pages.append(wiki)
+
+    # Group public events by actor
+    for public_event in public_events:
+        username = public_event.actor_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].public_events.append(public_event)
+
+    # Group discussions by author
+    for discussion in discussions:
+        username = discussion.author_username
+        if username not in user_events:
+            user_events[username] = UserEvents()
+        user_events[username].discussions.append(discussion)
 
     return user_events

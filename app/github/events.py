@@ -4,14 +4,22 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.shared.models import (
+    CommitCommentEvent,
     CommitEvent,
     CreateEvent,
     DeleteEvent,
+    DiscussionEvent,
     ForkEvent,
+    GollumEvent,
+    IssueCommentEvent,
     IssuesEvent,
+    MemberEvent,
+    PublicEvent,
     PullRequestEvent,
+    PullRequestReviewCommentEvent,
     PullRequestReviewEvent,
     ReleaseEvent,
+    WatchEvent,
 )
 
 if TYPE_CHECKING:
@@ -147,6 +155,14 @@ def filter_events_by_type(events: list[dict[str, Any]]) -> dict[str, list[dict[s
         "CreateEvent": [],
         "DeleteEvent": [],
         "ForkEvent": [],
+        "WatchEvent": [],
+        "IssueCommentEvent": [],
+        "PullRequestReviewCommentEvent": [],
+        "CommitCommentEvent": [],
+        "MemberEvent": [],
+        "GollumEvent": [],
+        "PublicEvent": [],
+        "DiscussionEvent": [],
     }
 
     tracked_types = set(categorized.keys())
@@ -320,3 +336,223 @@ async def parse_forks_from_events(events: list[dict[str, Any]]) -> list[ForkEven
             )
 
     return forks
+
+
+async def parse_stars_from_events(events: list[dict[str, Any]]) -> list[WatchEvent]:
+    """Parse WatchEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed WatchEvent objects
+    """
+    star_events = []
+    for event in events:
+        if event.get("type") == "WatchEvent":
+            try:
+                star_event = WatchEvent.from_github_event(event)
+                star_events.append(star_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.star.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.star.success", count=len(star_events))
+    return star_events
+
+
+async def parse_issue_comments_from_events(events: list[dict[str, Any]]) -> list[IssueCommentEvent]:
+    """Parse IssueCommentEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed IssueCommentEvent objects
+    """
+    issue_comment_events = []
+    for event in events:
+        if event.get("type") == "IssueCommentEvent":
+            try:
+                issue_comment_event = IssueCommentEvent.from_github_event(event)
+                issue_comment_events.append(issue_comment_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.issue_comment.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.issue_comment.success", count=len(issue_comment_events))
+    return issue_comment_events
+
+
+async def parse_pr_review_comments_from_events(
+    events: list[dict[str, Any]],
+) -> list[PullRequestReviewCommentEvent]:
+    """Parse PullRequestReviewCommentEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed PullRequestReviewCommentEvent objects
+    """
+    pr_review_comment_events = []
+    for event in events:
+        if event.get("type") == "PullRequestReviewCommentEvent":
+            try:
+                pr_review_comment_event = PullRequestReviewCommentEvent.from_github_event(event)
+                pr_review_comment_events.append(pr_review_comment_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.pr_review_comment.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.pr_review_comment.success", count=len(pr_review_comment_events))
+    return pr_review_comment_events
+
+
+async def parse_commit_comments_from_events(
+    events: list[dict[str, Any]],
+) -> list[CommitCommentEvent]:
+    """Parse CommitCommentEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed CommitCommentEvent objects
+    """
+    commit_comment_events = []
+    for event in events:
+        if event.get("type") == "CommitCommentEvent":
+            try:
+                commit_comment_event = CommitCommentEvent.from_github_event(event)
+                commit_comment_events.append(commit_comment_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.commit_comment.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.commit_comment.success", count=len(commit_comment_events))
+    return commit_comment_events
+
+
+async def parse_members_from_events(events: list[dict[str, Any]]) -> list[MemberEvent]:
+    """Parse MemberEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed MemberEvent objects
+    """
+    member_events = []
+    for event in events:
+        if event.get("type") == "MemberEvent":
+            try:
+                member_event = MemberEvent.from_github_event(event)
+                member_events.append(member_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.member.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.member.success", count=len(member_events))
+    return member_events
+
+
+async def parse_wiki_pages_from_events(events: list[dict[str, Any]]) -> list[GollumEvent]:
+    """Parse GollumEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed GollumEvent objects
+    """
+    wiki_page_events = []
+    for event in events:
+        if event.get("type") == "GollumEvent":
+            try:
+                wiki_page_event = GollumEvent.from_github_event(event)
+                wiki_page_events.append(wiki_page_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.wiki_page.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.wiki_page.success", count=len(wiki_page_events))
+    return wiki_page_events
+
+
+async def parse_public_events_from_events(events: list[dict[str, Any]]) -> list[PublicEvent]:
+    """Parse PublicEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed PublicEvent objects
+    """
+    public_events = []
+    for event in events:
+        if event.get("type") == "PublicEvent":
+            try:
+                public_event = PublicEvent.from_github_event(event)
+                public_events.append(public_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.public.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.public.success", count=len(public_events))
+    return public_events
+
+
+async def parse_discussions_from_events(events: list[dict[str, Any]]) -> list[DiscussionEvent]:
+    """Parse DiscussionEvent from GitHub events.
+
+    Args:
+        events: List of raw GitHub event dictionaries
+
+    Returns:
+        List of parsed DiscussionEvent objects
+    """
+    discussion_events = []
+    for event in events:
+        if event.get("type") == "DiscussionEvent":
+            try:
+                discussion_event = DiscussionEvent.from_github_event(event)
+                discussion_events.append(discussion_event)
+            except Exception as e:
+                logger.warning(
+                    "github.parse.discussion.failed",
+                    event_id=event.get("id"),
+                    error=str(e),
+                )
+                continue
+
+    logger.info("github.parse.discussion.success", count=len(discussion_events))
+    return discussion_events

@@ -138,7 +138,10 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
             rows = await conn.fetch(GET_ACTIVITY_DATES, username)
             if not rows:
                 return StreakInfo(
-                    streak_type="weekly", current_streak=0, longest_streak=0, last_activity_date=None
+                    streak_type="weekly",
+                    current_streak=0,
+                    longest_streak=0,
+                    last_activity_date=None,
                 )
 
             activity_dates = [row["activity_date"] for row in rows]
@@ -146,7 +149,10 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
 
             if not activity_dates:
                 return StreakInfo(
-                    streak_type="weekly", current_streak=0, longest_streak=0, last_activity_date=None
+                    streak_type="weekly",
+                    current_streak=0,
+                    longest_streak=0,
+                    last_activity_date=None,
                 )
 
             last_date = activity_dates[0]
@@ -157,7 +163,9 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
             else:
                 # Count consecutive weeks with activity
                 current_streak = 0
-                current_week_start = last_date - timedelta(days=last_date.weekday())  # Monday of last commit
+                current_week_start = last_date - timedelta(
+                    days=last_date.weekday()
+                )  # Monday of last commit
 
                 for activity_date in activity_dates:
                     week_start = activity_date - timedelta(days=activity_date.weekday())
@@ -359,7 +367,10 @@ async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> Streak
             rows = await conn.fetch(GET_ACTIVITY_DATES, username)
             if not rows:
                 return StreakInfo(
-                    streak_type="yearly", current_streak=0, longest_streak=0, last_activity_date=None
+                    streak_type="yearly",
+                    current_streak=0,
+                    longest_streak=0,
+                    last_activity_date=None,
                 )
 
             activity_dates = [row["activity_date"] for row in rows]
@@ -367,7 +378,10 @@ async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> Streak
 
             if not activity_dates:
                 return StreakInfo(
-                    streak_type="yearly", current_streak=0, longest_streak=0, last_activity_date=None
+                    streak_type="yearly",
+                    current_streak=0,
+                    longest_streak=0,
+                    last_activity_date=None,
                 )
 
             # Group activity dates by year
