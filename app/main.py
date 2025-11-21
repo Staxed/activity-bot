@@ -164,6 +164,8 @@ async def startup() -> None:
     global \
         database_client, \
         quote_service, \
+        stats_service, \
+        summary_scheduler, \
         github_client, \
         discord_bot, \
         discord_poster, \
@@ -198,7 +200,6 @@ async def startup() -> None:
     set_quote_service(quote_service)
 
     # Initialize stats service if enabled
-    stats_service = None
     if settings.enable_stats:
         from app.stats.service import StatsService, set_stats_service
 
@@ -254,7 +255,6 @@ async def startup() -> None:
     await polling_service.start()
 
     # Initialize summary scheduler if stats enabled
-    summary_scheduler = None
     if settings.enable_stats:
         from app.discord.summary_scheduler import SummaryScheduler, set_summary_scheduler
 
