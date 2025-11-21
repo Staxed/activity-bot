@@ -5,6 +5,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+# Maximum length for comment bodies to prevent overly long embeds
+MAX_COMMENT_BODY_LENGTH = 500
+
 
 class CommitEvent(BaseModel):
     """Internal representation of a GitHub commit event.
@@ -751,10 +754,10 @@ class IssueCommentEvent(BaseModel):
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
-        # Truncate comment body to 500 chars
+        # Truncate comment body to prevent overly long embeds
         comment_body = payload.get("comment", {}).get("body")
-        if comment_body and len(comment_body) > 500:
-            comment_body = comment_body[:500]
+        if comment_body and len(comment_body) > MAX_COMMENT_BODY_LENGTH:
+            comment_body = comment_body[: MAX_COMMENT_BODY_LENGTH - 3] + "..."
 
         return cls(
             event_id=event["id"],
@@ -826,10 +829,10 @@ class PullRequestReviewCommentEvent(BaseModel):
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
-        # Truncate comment body to 500 chars
+        # Truncate comment body to prevent overly long embeds
         comment_body = payload.get("comment", {}).get("body")
-        if comment_body and len(comment_body) > 500:
-            comment_body = comment_body[:500]
+        if comment_body and len(comment_body) > MAX_COMMENT_BODY_LENGTH:
+            comment_body = comment_body[: MAX_COMMENT_BODY_LENGTH - 3] + "..."
 
         return cls(
             event_id=event["id"],
@@ -902,10 +905,10 @@ class CommitCommentEvent(BaseModel):
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
-        # Truncate comment body to 500 chars
+        # Truncate comment body to prevent overly long embeds
         comment_body = payload.get("comment", {}).get("body")
-        if comment_body and len(comment_body) > 500:
-            comment_body = comment_body[:500]
+        if comment_body and len(comment_body) > MAX_COMMENT_BODY_LENGTH:
+            comment_body = comment_body[: MAX_COMMENT_BODY_LENGTH - 3] + "..."
 
         commit_sha = payload["comment"]["commit_id"]
 
@@ -1038,9 +1041,26 @@ class GollumEvent(BaseModel):
         # GollumEvent can have multiple pages - take first page only
         pages = payload.get("pages", [])
         if not pages:
+            # Import logger locally to avoid circular dependency
+            from app.core.logging import get_logger
+
+            logger = get_logger(__name__)
+            logger.warning("github.parse.gollum.no_pages", event_id=event.get("id"))
             raise ValueError("GollumEvent has no pages")
 
         first_page = pages[0]
+
+        # Log if multiple pages were edited (we only process the first)
+        if len(pages) > 1:
+            from app.core.logging import get_logger
+
+            logger = get_logger(__name__)
+            logger.info(
+                "github.parse.gollum.multiple_pages",
+                event_id=event.get("id"),
+                total_pages=len(pages),
+                processed=1,
+            )
 
         return cls(
             event_id=event["id"],

@@ -227,7 +227,7 @@ class Settings(BaseSettings):
         return [state.strip() for state in self.post_review_states.split(",") if state.strip()]
 
     @property
-    def allowed_issue_comment_actions_list(self) -> list[str]:
+    def issue_comment_actions_list(self) -> list[str]:
         """Parse issue comment actions from comma-separated string.
 
         Returns:
@@ -240,7 +240,7 @@ class Settings(BaseSettings):
         ]
 
     @property
-    def allowed_pr_review_comment_actions_list(self) -> list[str]:
+    def pr_review_comment_actions_list(self) -> list[str]:
         """Parse PR review comment actions from comma-separated string.
 
         Returns:
@@ -253,7 +253,7 @@ class Settings(BaseSettings):
         ]
 
     @property
-    def allowed_commit_comment_actions_list(self) -> list[str]:
+    def commit_comment_actions_list(self) -> list[str]:
         """Parse commit comment actions from comma-separated string.
 
         Returns:
@@ -266,7 +266,7 @@ class Settings(BaseSettings):
         ]
 
     @property
-    def allowed_member_actions_list(self) -> list[str]:
+    def member_actions_list(self) -> list[str]:
         """Parse member actions from comma-separated string.
 
         Returns:
@@ -277,7 +277,7 @@ class Settings(BaseSettings):
         return [action.strip() for action in self.member_actions.split(",") if action.strip()]
 
     @property
-    def allowed_wiki_actions_list(self) -> list[str]:
+    def wiki_actions_list(self) -> list[str]:
         """Parse wiki actions from comma-separated string.
 
         Returns:
@@ -288,7 +288,7 @@ class Settings(BaseSettings):
         return [action.strip() for action in self.wiki_actions.split(",") if action.strip()]
 
     @property
-    def allowed_discussion_actions_list(self) -> list[str]:
+    def discussion_actions_list(self) -> list[str]:
         """Parse discussion actions from comma-separated string.
 
         Returns:

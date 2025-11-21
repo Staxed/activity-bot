@@ -165,7 +165,8 @@ class DatabaseClient:
             commits: List of CommitEvent objects
 
         Returns:
-            Number of rows inserted (excludes duplicates skipped by ON CONFLICT)
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -209,8 +210,7 @@ class DatabaseClient:
                     for c in commits
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_commits.success", total=len(commits))
                 return len(commits)
         except asyncpg.PostgresError as e:
@@ -262,8 +262,7 @@ class DatabaseClient:
                     for pr in prs
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_pull_requests.success", total=len(prs))
                 return len(prs)
         except asyncpg.PostgresError as e:
@@ -305,8 +304,7 @@ class DatabaseClient:
                     for r in reviews
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_pr_reviews.success", total=len(reviews))
                 return len(reviews)
         except asyncpg.PostgresError as e:
@@ -349,8 +347,7 @@ class DatabaseClient:
                     for i in issues
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_issues.success", total=len(issues))
                 return len(issues)
         except asyncpg.PostgresError as e:
@@ -394,8 +391,7 @@ class DatabaseClient:
                     for r in releases
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_releases.success", total=len(releases))
                 return len(releases)
         except asyncpg.PostgresError as e:
@@ -435,8 +431,7 @@ class DatabaseClient:
                     for c in creations
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_creations.success", total=len(creations))
                 return len(creations)
         except asyncpg.PostgresError as e:
@@ -476,8 +471,7 @@ class DatabaseClient:
                     for d in deletions
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_deletions.success", total=len(deletions))
                 return len(deletions)
         except asyncpg.PostgresError as e:
@@ -519,8 +513,7 @@ class DatabaseClient:
                     for f in forks
                 ]
                 await conn.executemany(query, data)
-                # executemany returns None for INSERT statements
-                # We can't tell which were inserted vs skipped due to ON CONFLICT
+                # Note: ON CONFLICT DO NOTHING may skip some rows, actual inserts may be less
                 logger.info("database.insert_forks.success", total=len(forks))
                 return len(forks)
         except asyncpg.PostgresError as e:
@@ -1200,7 +1193,8 @@ class DatabaseClient:
             stars: List of WatchEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -1247,7 +1241,8 @@ class DatabaseClient:
             comments: List of IssueCommentEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -1300,7 +1295,8 @@ class DatabaseClient:
             comments: List of PullRequestReviewCommentEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -1354,7 +1350,8 @@ class DatabaseClient:
             comments: List of CommitCommentEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -1408,7 +1405,8 @@ class DatabaseClient:
             members: List of MemberEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -1457,7 +1455,8 @@ class DatabaseClient:
             pages: List of GollumEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -1508,7 +1507,8 @@ class DatabaseClient:
             events: List of PublicEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -1554,7 +1554,8 @@ class DatabaseClient:
             discussions: List of DiscussionEvent objects
 
         Returns:
-            Number of rows inserted
+            Number of rows attempted to insert (actual inserts may be less due to
+            ON CONFLICT DO NOTHING deduplication)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails

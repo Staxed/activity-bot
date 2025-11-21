@@ -397,7 +397,7 @@ async def main() -> None:
         logger.info("application.signal.received", signal=signal.Signals(sig).name)
         task = loop.create_task(shutdown())
 
-        def stop_loop(_: Any) -> None:
+        def stop_loop(_: asyncio.Task[None]) -> None:
             loop.stop()
 
         task.add_done_callback(stop_loop)

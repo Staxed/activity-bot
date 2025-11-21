@@ -9,6 +9,8 @@ from app.core.database import DatabaseClient
 from app.core.logging import get_logger
 from app.core.state import StateManager
 from app.github.action_filter import (
+    filter_commit_comment_actions,
+    filter_discussion_actions,
     filter_issue_actions,
     filter_issue_comment_actions,
     filter_member_actions,
@@ -572,8 +574,12 @@ class GitHubPollingService:
         pr_review_comments = filter_pr_review_comment_actions(
             pr_review_comments, self.settings.pr_review_comment_actions_list
         )
+        commit_comments = filter_commit_comment_actions(
+            commit_comments, self.settings.commit_comment_actions_list
+        )
         members = filter_member_actions(members, self.settings.member_actions_list)
         wiki_pages = filter_wiki_actions(wiki_pages, self.settings.wiki_actions_list)
+        discussions = filter_discussion_actions(discussions, self.settings.discussion_actions_list)
 
         # Bulk insert all events to database in parallel
         await asyncio.gather(
@@ -597,7 +603,7 @@ class GitHubPollingService:
 
         # Check daily achievements if stats enabled
         if self.settings.enable_stats and commits:
-            await self._check_achievements_for_user(username, discord_poster)
+            await self._check_achievements_for_user(username, self.discord_poster)
 
         # Filter to only unposted events before posting to Discord
         # This prevents duplicate Discord posts when events are seen in multiple poll cycles
