@@ -10,21 +10,33 @@ from app.core.logging import get_logger
 from app.core.state import StateManager
 from app.github.action_filter import (
     filter_issue_actions,
+    filter_issue_comment_actions,
+    filter_member_actions,
     filter_pr_actions,
+    filter_pr_review_comment_actions,
     filter_review_states,
+    filter_wiki_actions,
 )
 from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
 from app.github.events import (
     filter_events_by_type,
+    parse_commit_comments_from_events,
     parse_commits_from_events,
     parse_creations_from_events,
     parse_deletions_from_events,
+    parse_discussions_from_events,
     parse_forks_from_events,
+    parse_issue_comments_from_events,
     parse_issues_from_events,
+    parse_members_from_events,
+    parse_pr_review_comments_from_events,
     parse_pr_reviews_from_events,
+    parse_public_events_from_events,
     parse_pull_requests_from_events,
     parse_releases_from_events,
+    parse_stars_from_events,
+    parse_wiki_pages_from_events,
 )
 from app.github.repo_filter import should_track_repo
 from app.shared.exceptions import GitHubPollingError
@@ -184,7 +196,23 @@ class GitHubPollingService:
         creations: list[Any],
         deletions: list[Any],
         forks: list[Any],
+        stars: list[Any],
+        issue_comments: list[Any],
+        pr_review_comments: list[Any],
+        commit_comments: list[Any],
+        members: list[Any],
+        wiki_pages: list[Any],
+        public_events: list[Any],
+        discussions: list[Any],
     ) -> tuple[
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
+        list[Any],
         list[Any],
         list[Any],
         list[Any],
@@ -198,7 +226,7 @@ class GitHubPollingService:
 
         Queries the database for all unposted events of each type in parallel,
         then filters the provided event lists to only include unposted events.
-        This is much faster than sequential queries (8x speedup).
+        This is much faster than sequential queries (16x speedup).
 
         Args:
             commits: List of CommitEvent objects to filter
@@ -209,6 +237,14 @@ class GitHubPollingService:
             creations: List of CreateEvent objects to filter
             deletions: List of DeleteEvent objects to filter
             forks: List of ForkEvent objects to filter
+            stars: List of StarEvent objects to filter
+            issue_comments: List of IssueCommentEvent objects to filter
+            pr_review_comments: List of PullRequestReviewCommentEvent objects to filter
+            commit_comments: List of CommitCommentEvent objects to filter
+            members: List of MemberEvent objects to filter
+            wiki_pages: List of WikiPageEvent objects to filter
+            public_events: List of PublicEvent objects to filter
+            discussions: List of DiscussionEvent objects to filter
 
         Returns:
             Tuple of filtered event lists in same order as inputs
@@ -223,6 +259,14 @@ class GitHubPollingService:
             unposted_creations,
             unposted_deletions,
             unposted_forks,
+            unposted_stars,
+            unposted_issue_comments,
+            unposted_pr_review_comments,
+            unposted_commit_comments,
+            unposted_members,
+            unposted_wiki_pages,
+            unposted_public_events,
+            unposted_discussions,
         ) = await asyncio.gather(
             self.db.get_unposted_commit_shas([c.sha for c in commits])
             if commits
@@ -244,6 +288,28 @@ class GitHubPollingService:
             if deletions
             else asyncio.sleep(0, result=[]),
             self.db.get_unposted_forks(max_age_hours=12) if forks else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_stars(max_age_hours=12) if stars else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_issue_comments(max_age_hours=12)
+            if issue_comments
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_pr_review_comments(max_age_hours=12)
+            if pr_review_comments
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_commit_comments(max_age_hours=12)
+            if commit_comments
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_members(max_age_hours=12)
+            if members
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_wiki_pages(max_age_hours=12)
+            if wiki_pages
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_public_events(max_age_hours=12)
+            if public_events
+            else asyncio.sleep(0, result=[]),
+            self.db.get_unposted_discussions(max_age_hours=12)
+            if discussions
+            else asyncio.sleep(0, result=[]),
         )
 
         # Filter each event type to only unposted events
@@ -279,6 +345,52 @@ class GitHubPollingService:
         unposted_fork_ids = {f.event_id for f in unposted_forks}
         filtered_forks = [f for f in forks if f.event_id in unposted_fork_ids] if forks else []
 
+        unposted_star_ids = {s.event_id for s in unposted_stars}
+        filtered_stars = [s for s in stars if s.event_id in unposted_star_ids] if stars else []
+
+        unposted_issue_comment_ids = {ic.event_id for ic in unposted_issue_comments}
+        filtered_issue_comments = (
+            [ic for ic in issue_comments if ic.event_id in unposted_issue_comment_ids]
+            if issue_comments
+            else []
+        )
+
+        unposted_pr_review_comment_ids = {prc.event_id for prc in unposted_pr_review_comments}
+        filtered_pr_review_comments = (
+            [prc for prc in pr_review_comments if prc.event_id in unposted_pr_review_comment_ids]
+            if pr_review_comments
+            else []
+        )
+
+        unposted_commit_comment_ids = {cc.event_id for cc in unposted_commit_comments}
+        filtered_commit_comments = (
+            [cc for cc in commit_comments if cc.event_id in unposted_commit_comment_ids]
+            if commit_comments
+            else []
+        )
+
+        unposted_member_ids = {m.event_id for m in unposted_members}
+        filtered_members = (
+            [m for m in members if m.event_id in unposted_member_ids] if members else []
+        )
+
+        unposted_wiki_page_ids = {w.event_id for w in unposted_wiki_pages}
+        filtered_wiki_pages = (
+            [w for w in wiki_pages if w.event_id in unposted_wiki_page_ids] if wiki_pages else []
+        )
+
+        unposted_public_event_ids = {p.event_id for p in unposted_public_events}
+        filtered_public_events = (
+            [p for p in public_events if p.event_id in unposted_public_event_ids]
+            if public_events
+            else []
+        )
+
+        unposted_discussion_ids = {d.event_id for d in unposted_discussions}
+        filtered_discussions = (
+            [d for d in discussions if d.event_id in unposted_discussion_ids] if discussions else []
+        )
+
         return (
             filtered_commits,
             filtered_prs,
@@ -288,6 +400,14 @@ class GitHubPollingService:
             filtered_creations,
             filtered_deletions,
             filtered_forks,
+            filtered_stars,
+            filtered_issue_comments,
+            filtered_pr_review_comments,
+            filtered_commit_comments,
+            filtered_members,
+            filtered_wiki_pages,
+            filtered_public_events,
+            filtered_discussions,
         )
 
     async def poll_once(self) -> int:
@@ -373,6 +493,14 @@ class GitHubPollingService:
             parse_creations_from_events(categorized["CreateEvent"]),
             parse_deletions_from_events(categorized["DeleteEvent"]),
             parse_forks_from_events(categorized["ForkEvent"]),
+            parse_stars_from_events(categorized["WatchEvent"]),
+            parse_issue_comments_from_events(categorized["IssueCommentEvent"]),
+            parse_pr_review_comments_from_events(categorized["PullRequestReviewCommentEvent"]),
+            parse_commit_comments_from_events(categorized["CommitCommentEvent"]),
+            parse_members_from_events(categorized["MemberEvent"]),
+            parse_wiki_pages_from_events(categorized["GollumEvent"]),
+            parse_public_events_from_events(categorized["PublicEvent"]),
+            parse_discussions_from_events(categorized["DiscussionEvent"]),
         )
 
         # Unpack results with type hints
@@ -384,6 +512,14 @@ class GitHubPollingService:
         creations: list[Any] = results[5]  # type: ignore[assignment]
         deletions: list[Any] = results[6]  # type: ignore[assignment]
         forks: list[Any] = results[7]  # type: ignore[assignment]
+        stars: list[Any] = results[8]  # type: ignore[assignment]
+        issue_comments: list[Any] = results[9]  # type: ignore[assignment]
+        pr_review_comments: list[Any] = results[10]  # type: ignore[assignment]
+        commit_comments: list[Any] = results[11]  # type: ignore[assignment]
+        members: list[Any] = results[12]  # type: ignore[assignment]
+        wiki_pages: list[Any] = results[13]  # type: ignore[assignment]
+        public_events: list[Any] = results[14]  # type: ignore[assignment]
+        discussions: list[Any] = results[15]  # type: ignore[assignment]
 
         # Get user-specific ignored repos
         ignored_repos = self.settings.get_user_ignored_repos(username)
@@ -406,6 +542,14 @@ class GitHubPollingService:
             for f in forks
             if should_track_repo(f"{f.source_repo_owner}/{f.source_repo_name}", ignored_repos)
         ]
+        stars = [s for s in stars if filter_by_repo(s)]
+        issue_comments = [ic for ic in issue_comments if filter_by_repo(ic)]
+        pr_review_comments = [prc for prc in pr_review_comments if filter_by_repo(prc)]
+        commit_comments = [cc for cc in commit_comments if filter_by_repo(cc)]
+        members = [m for m in members if filter_by_repo(m)]
+        wiki_pages = [w for w in wiki_pages if filter_by_repo(w)]
+        public_events = [p for p in public_events if filter_by_repo(p)]
+        discussions = [d for d in discussions if filter_by_repo(d)]
 
         # Apply branch filtering to commits
         commits = [
@@ -422,6 +566,14 @@ class GitHubPollingService:
         prs = filter_pr_actions(prs, self.settings.pr_actions_list)
         issues = filter_issue_actions(issues, self.settings.issue_actions_list)
         pr_reviews = filter_review_states(pr_reviews, self.settings.review_states_list)
+        issue_comments = filter_issue_comment_actions(
+            issue_comments, self.settings.issue_comment_actions_list
+        )
+        pr_review_comments = filter_pr_review_comment_actions(
+            pr_review_comments, self.settings.pr_review_comment_actions_list
+        )
+        members = filter_member_actions(members, self.settings.member_actions_list)
+        wiki_pages = filter_wiki_actions(wiki_pages, self.settings.wiki_actions_list)
 
         # Bulk insert all events to database in parallel
         await asyncio.gather(
@@ -433,6 +585,14 @@ class GitHubPollingService:
             self.db.insert_creations(creations),
             self.db.insert_deletions(deletions),
             self.db.insert_forks(forks),
+            self.db.insert_stars(stars),
+            self.db.insert_issue_comments(issue_comments),
+            self.db.insert_pr_review_comments(pr_review_comments),
+            self.db.insert_commit_comments(commit_comments),
+            self.db.insert_members(members),
+            self.db.insert_wiki_pages(wiki_pages),
+            self.db.insert_public_events(public_events),
+            self.db.insert_discussions(discussions),
         )
 
         # Check daily achievements if stats enabled
@@ -451,6 +611,14 @@ class GitHubPollingService:
             creations,
             deletions,
             forks,
+            stars,
+            issue_comments,
+            pr_review_comments,
+            commit_comments,
+            members,
+            wiki_pages,
+            public_events,
+            discussions,
         ) = await self._filter_to_unposted(
             commits=commits,
             prs=prs,
@@ -460,6 +628,14 @@ class GitHubPollingService:
             creations=creations,
             deletions=deletions,
             forks=forks,
+            stars=stars,
+            issue_comments=issue_comments,
+            pr_review_comments=pr_review_comments,
+            commit_comments=commit_comments,
+            members=members,
+            wiki_pages=wiki_pages,
+            public_events=public_events,
+            discussions=discussions,
         )
 
         # Post all unposted events to Discord
@@ -474,6 +650,14 @@ class GitHubPollingService:
                     creations=creations,
                     deletions=deletions,
                     forks=forks,
+                    stars=stars,
+                    issue_comments=issue_comments,
+                    pr_review_comments=pr_review_comments,
+                    commit_comments=commit_comments,
+                    members=members,
+                    wiki_pages=wiki_pages,
+                    public_events=public_events,
+                    discussions=discussions,
                     settings=self.settings,
                 )
 
@@ -494,6 +678,24 @@ class GitHubPollingService:
                     await self.db.mark_deletions_posted([d.event_id for d in deletions])
                 if forks:
                     await self.db.mark_forks_posted([f.event_id for f in forks])
+                if stars:
+                    await self.db.mark_stars_posted([s.event_id for s in stars])
+                if issue_comments:
+                    await self.db.mark_issue_comments_posted([ic.event_id for ic in issue_comments])
+                if pr_review_comments:
+                    await self.db.mark_pr_review_comments_posted(
+                        [prc.event_id for prc in pr_review_comments]
+                    )
+                if commit_comments:
+                    await self.db.mark_commit_comments_posted([cc.event_id for cc in commit_comments])
+                if members:
+                    await self.db.mark_members_posted([m.event_id for m in members])
+                if wiki_pages:
+                    await self.db.mark_wiki_pages_posted([w.event_id for w in wiki_pages])
+                if public_events:
+                    await self.db.mark_public_events_posted([p.event_id for p in public_events])
+                if discussions:
+                    await self.db.mark_discussions_posted([d.event_id for d in discussions])
 
             except Exception as e:
                 logger.error(
@@ -509,6 +711,14 @@ class GitHubPollingService:
             + len(creations)
             + len(deletions)
             + len(forks)
+            + len(stars)
+            + len(issue_comments)
+            + len(pr_review_comments)
+            + len(commit_comments)
+            + len(members)
+            + len(wiki_pages)
+            + len(public_events)
+            + len(discussions)
         )
 
         logger.info(
@@ -523,6 +733,14 @@ class GitHubPollingService:
             creations=len(creations),
             deletions=len(deletions),
             forks=len(forks),
+            stars=len(stars),
+            issue_comments=len(issue_comments),
+            pr_review_comments=len(pr_review_comments),
+            commit_comments=len(commit_comments),
+            members=len(members),
+            wiki_pages=len(wiki_pages),
+            public_events=len(public_events),
+            discussions=len(discussions),
         )
 
         return total_events
