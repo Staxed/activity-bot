@@ -35,11 +35,25 @@ class Settings(BaseSettings):
     post_creations: bool = True
     post_deletions: bool = True
     post_forks: bool = True
+    post_stars: bool = True
+    post_issue_comments: bool = True
+    post_pr_review_comments: bool = True
+    post_commit_comments: bool = True
+    post_members: bool = True
+    post_wiki_pages: bool = True
+    post_public_events: bool = True
+    post_discussions: bool = True
 
     # Action filters (comma-separated)
     post_pr_actions: str = "opened,closed,merged"
     post_issue_actions: str = "opened,closed,reopened"
     post_review_states: str = "approved,changes_requested"
+    issue_comment_actions: str = ""
+    pr_review_comment_actions: str = ""
+    commit_comment_actions: str = ""
+    member_actions: str = ""
+    wiki_actions: str = ""
+    discussion_actions: str = ""
 
     # Discord configuration
     discord_token: str
@@ -211,6 +225,72 @@ class Settings(BaseSettings):
         if not self.post_review_states:
             return []
         return [state.strip() for state in self.post_review_states.split(",") if state.strip()]
+
+    @property
+    def allowed_issue_comment_actions_list(self) -> list[str]:
+        """Parse issue comment actions from comma-separated string.
+
+        Returns:
+            List of allowed actions for issue comments (e.g., ['created', 'edited'])
+        """
+        if not self.issue_comment_actions:
+            return []
+        return [action.strip() for action in self.issue_comment_actions.split(",") if action.strip()]
+
+    @property
+    def allowed_pr_review_comment_actions_list(self) -> list[str]:
+        """Parse PR review comment actions from comma-separated string.
+
+        Returns:
+            List of allowed actions for PR review comments (e.g., ['created', 'edited'])
+        """
+        if not self.pr_review_comment_actions:
+            return []
+        return [action.strip() for action in self.pr_review_comment_actions.split(",") if action.strip()]
+
+    @property
+    def allowed_commit_comment_actions_list(self) -> list[str]:
+        """Parse commit comment actions from comma-separated string.
+
+        Returns:
+            List of allowed actions for commit comments (e.g., ['created', 'edited'])
+        """
+        if not self.commit_comment_actions:
+            return []
+        return [action.strip() for action in self.commit_comment_actions.split(",") if action.strip()]
+
+    @property
+    def allowed_member_actions_list(self) -> list[str]:
+        """Parse member actions from comma-separated string.
+
+        Returns:
+            List of allowed actions for members (e.g., ['added', 'removed'])
+        """
+        if not self.member_actions:
+            return []
+        return [action.strip() for action in self.member_actions.split(",") if action.strip()]
+
+    @property
+    def allowed_wiki_actions_list(self) -> list[str]:
+        """Parse wiki actions from comma-separated string.
+
+        Returns:
+            List of allowed actions for wiki pages (e.g., ['created', 'edited'])
+        """
+        if not self.wiki_actions:
+            return []
+        return [action.strip() for action in self.wiki_actions.split(",") if action.strip()]
+
+    @property
+    def allowed_discussion_actions_list(self) -> list[str]:
+        """Parse discussion actions from comma-separated string.
+
+        Returns:
+            List of allowed actions for discussions (e.g., ['created', 'answered'])
+        """
+        if not self.discussion_actions:
+            return []
+        return [action.strip() for action in self.discussion_actions.split(",") if action.strip()]
 
     def get_user_ignored_repos(self, username: str) -> list[str]:
         """Get list of ignored repositories for a specific user.
