@@ -687,7 +687,9 @@ class GitHubPollingService:
                         [prc.event_id for prc in pr_review_comments]
                     )
                 if commit_comments:
-                    await self.db.mark_commit_comments_posted([cc.event_id for cc in commit_comments])
+                    await self.db.mark_commit_comments_posted(
+                        [cc.event_id for cc in commit_comments]
+                    )
                 if members:
                     await self.db.mark_members_posted([m.event_id for m in members])
                 if wiki_pages:

@@ -1743,7 +1743,9 @@ class DatabaseClient:
                 logger.info("database.get_unposted_pr_review_comments.success", count=len(comments))
                 return comments
         except asyncpg.PostgresError as e:
-            logger.error("database.get_unposted_pr_review_comments.failed", error=str(e), exc_info=True)
+            logger.error(
+                "database.get_unposted_pr_review_comments.failed", error=str(e), exc_info=True
+            )
             raise DatabaseError(f"Failed to get unposted PR review comments: {e}") from e
 
     async def get_unposted_commit_comments(self, max_age_hours: int = 12) -> list[Any]:
@@ -1794,7 +1796,9 @@ class DatabaseClient:
                 logger.info("database.get_unposted_commit_comments.success", count=len(comments))
                 return comments
         except asyncpg.PostgresError as e:
-            logger.error("database.get_unposted_commit_comments.failed", error=str(e), exc_info=True)
+            logger.error(
+                "database.get_unposted_commit_comments.failed", error=str(e), exc_info=True
+            )
             raise DatabaseError(f"Failed to get unposted commit comments: {e}") from e
 
     async def get_unposted_members(self, max_age_hours: int = 12) -> list[Any]:
@@ -2071,7 +2075,9 @@ class DatabaseClient:
                 await conn.execute(query, event_ids)
                 logger.info("database.mark_pr_review_comments_posted.success", count=len(event_ids))
         except asyncpg.PostgresError as e:
-            logger.error("database.mark_pr_review_comments_posted.failed", error=str(e), exc_info=True)
+            logger.error(
+                "database.mark_pr_review_comments_posted.failed", error=str(e), exc_info=True
+            )
             raise DatabaseError(f"Failed to mark PR review comments as posted: {e}") from e
 
     async def mark_commit_comments_posted(self, event_ids: list[str]) -> None:

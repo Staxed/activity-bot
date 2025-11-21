@@ -235,7 +235,9 @@ class Settings(BaseSettings):
         """
         if not self.issue_comment_actions:
             return []
-        return [action.strip() for action in self.issue_comment_actions.split(",") if action.strip()]
+        return [
+            action.strip() for action in self.issue_comment_actions.split(",") if action.strip()
+        ]
 
     @property
     def allowed_pr_review_comment_actions_list(self) -> list[str]:
@@ -246,7 +248,9 @@ class Settings(BaseSettings):
         """
         if not self.pr_review_comment_actions:
             return []
-        return [action.strip() for action in self.pr_review_comment_actions.split(",") if action.strip()]
+        return [
+            action.strip() for action in self.pr_review_comment_actions.split(",") if action.strip()
+        ]
 
     @property
     def allowed_commit_comment_actions_list(self) -> list[str]:
@@ -257,7 +261,9 @@ class Settings(BaseSettings):
         """
         if not self.commit_comment_actions:
             return []
-        return [action.strip() for action in self.commit_comment_actions.split(",") if action.strip()]
+        return [
+            action.strip() for action in self.commit_comment_actions.split(",") if action.strip()
+        ]
 
     @property
     def allowed_member_actions_list(self) -> list[str]:

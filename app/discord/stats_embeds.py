@@ -60,7 +60,16 @@ def create_stats_embed(
     elif timeframe == "month":
         total_activity = stats.commits_this_month + stats.prs_this_month
     else:  # all
-        total_activity = stats.total_commits + stats.total_prs + stats.total_issues + stats.total_reviews + stats.total_releases + stats.total_creations + stats.total_deletions + stats.total_forks
+        total_activity = (
+            stats.total_commits
+            + stats.total_prs
+            + stats.total_issues
+            + stats.total_reviews
+            + stats.total_releases
+            + stats.total_creations
+            + stats.total_deletions
+            + stats.total_forks
+        )
 
     # Build description
     lines = [

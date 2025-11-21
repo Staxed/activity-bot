@@ -87,16 +87,18 @@ async def generate_daily_summary(
     embed.add_field(
         name="Activity",
         value=(
-            f"💻 {commits_count} commits\n"
-            f"🔀 {prs_count} pull requests\n"
-            f"🐛 {issues_count} issues"
+            f"💻 {commits_count} commits\n🔀 {prs_count} pull requests\n🐛 {issues_count} issues"
         ),
         inline=True,
     )
 
     # Streak field
     streak_text = f"🔥 {daily_streak.current_streak} days" if daily_streak else "No streak"
-    if daily_streak and daily_streak.current_streak == daily_streak.longest_streak and daily_streak.current_streak > 0:
+    if (
+        daily_streak
+        and daily_streak.current_streak == daily_streak.longest_streak
+        and daily_streak.current_streak > 0
+    ):
         streak_text += "\n⭐ Personal best!"
     embed.add_field(name="Streak", value=streak_text, inline=True)
 
@@ -245,7 +247,11 @@ async def generate_weekly_summary(
 
     # Streak info
     streak_text = f"🔥 {weekly_streak.current_streak} weeks" if weekly_streak else "No streak"
-    if weekly_streak and weekly_streak.current_streak == weekly_streak.longest_streak and weekly_streak.current_streak > 0:
+    if (
+        weekly_streak
+        and weekly_streak.current_streak == weekly_streak.longest_streak
+        and weekly_streak.current_streak > 0
+    ):
         streak_text += "\n⭐ Personal best!"
     embed.add_field(name="Streak", value=streak_text, inline=True)
 
@@ -402,7 +408,11 @@ async def generate_monthly_summary(
 
     # Streak info
     streak_text = f"🔥 {monthly_streak.current_streak} months" if monthly_streak else "No streak"
-    if monthly_streak and monthly_streak.current_streak == monthly_streak.longest_streak and monthly_streak.current_streak > 0:
+    if (
+        monthly_streak
+        and monthly_streak.current_streak == monthly_streak.longest_streak
+        and monthly_streak.current_streak > 0
+    ):
         streak_text += "\n⭐ Personal best!"
     embed.add_field(name="Streak", value=streak_text, inline=True)
 

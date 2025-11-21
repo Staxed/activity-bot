@@ -392,7 +392,9 @@ async def parse_issue_comments_from_events(events: list[dict[str, Any]]) -> list
     return issue_comment_events
 
 
-async def parse_pr_review_comments_from_events(events: list[dict[str, Any]]) -> list[PullRequestReviewCommentEvent]:
+async def parse_pr_review_comments_from_events(
+    events: list[dict[str, Any]],
+) -> list[PullRequestReviewCommentEvent]:
     """Parse PullRequestReviewCommentEvent from GitHub events.
 
     Args:
@@ -419,7 +421,9 @@ async def parse_pr_review_comments_from_events(events: list[dict[str, Any]]) -> 
     return pr_review_comment_events
 
 
-async def parse_commit_comments_from_events(events: list[dict[str, Any]]) -> list[CommitCommentEvent]:
+async def parse_commit_comments_from_events(
+    events: list[dict[str, Any]],
+) -> list[CommitCommentEvent]:
     """Parse CommitCommentEvent from GitHub events.
 
     Args:

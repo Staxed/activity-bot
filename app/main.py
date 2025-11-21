@@ -218,9 +218,7 @@ async def recover_unposted_events(
             db.mark_commit_comments_posted([cc.event_id for cc in commit_comments])
             if commit_comments
             else asyncio.sleep(0),
-            db.mark_members_posted([m.event_id for m in members])
-            if members
-            else asyncio.sleep(0),
+            db.mark_members_posted([m.event_id for m in members]) if members else asyncio.sleep(0),
             db.mark_wiki_pages_posted([w.event_id for w in wiki_pages])
             if wiki_pages
             else asyncio.sleep(0),
