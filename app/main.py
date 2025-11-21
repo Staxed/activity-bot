@@ -13,9 +13,15 @@ from app.discord.bot import DiscordBot
 from app.discord.poster import DiscordPoster
 from app.discord.quotes import QuoteService, set_quote_service
 from app.github.action_filter import (
+    filter_commit_comment_actions,
+    filter_discussion_actions,
     filter_issue_actions,
+    filter_issue_comment_actions,
+    filter_member_actions,
     filter_pr_actions,
+    filter_pr_review_comment_actions,
     filter_review_states,
+    filter_wiki_actions,
 )
 from app.github.branch_filter import should_track_branch
 from app.github.client import GitHubClient
@@ -48,7 +54,7 @@ async def recover_unposted_events(
         settings: Application settings
 
     Note:
-        Recovers all 8 event types within 12-hour window with filtering applied.
+        Recovers all 16 event types within 12-hour window with filtering applied.
         Errors are logged but don't fail startup.
     """
     try:
@@ -64,6 +70,14 @@ async def recover_unposted_events(
             creations,
             deletions,
             forks,
+            stars,
+            issue_comments,
+            pr_review_comments,
+            commit_comments,
+            members,
+            wiki_pages,
+            public_events,
+            discussions,
         ) = await asyncio.gather(
             db.get_unposted_commits(max_age_hours=12),
             db.get_unposted_prs(max_age_hours=12),
@@ -73,6 +87,14 @@ async def recover_unposted_events(
             db.get_unposted_creations(max_age_hours=12),
             db.get_unposted_deletions(max_age_hours=12),
             db.get_unposted_forks(max_age_hours=12),
+            db.get_unposted_stars(max_age_hours=12),
+            db.get_unposted_issue_comments(max_age_hours=12),
+            db.get_unposted_pr_review_comments(max_age_hours=12),
+            db.get_unposted_commit_comments(max_age_hours=12),
+            db.get_unposted_members(max_age_hours=12),
+            db.get_unposted_wiki_pages(max_age_hours=12),
+            db.get_unposted_public_events(max_age_hours=12),
+            db.get_unposted_discussions(max_age_hours=12),
         )
 
         # Apply branch filtering to commits
@@ -90,6 +112,18 @@ async def recover_unposted_events(
         prs = filter_pr_actions(prs, settings.pr_actions_list)
         issues = filter_issue_actions(issues, settings.issue_actions_list)
         reviews = filter_review_states(reviews, settings.review_states_list)
+        issue_comments = filter_issue_comment_actions(
+            issue_comments, settings.issue_comment_actions_list
+        )
+        pr_review_comments = filter_pr_review_comment_actions(
+            pr_review_comments, settings.pr_review_comment_actions_list
+        )
+        commit_comments = filter_commit_comment_actions(
+            commit_comments, settings.commit_comment_actions_list
+        )
+        members = filter_member_actions(members, settings.member_actions_list)
+        wiki_pages = filter_wiki_actions(wiki_pages, settings.wiki_actions_list)
+        discussions = filter_discussion_actions(discussions, settings.discussion_actions_list)
 
         total_events = (
             len(commits)
@@ -100,6 +134,14 @@ async def recover_unposted_events(
             + len(creations)
             + len(deletions)
             + len(forks)
+            + len(stars)
+            + len(issue_comments)
+            + len(pr_review_comments)
+            + len(commit_comments)
+            + len(members)
+            + len(wiki_pages)
+            + len(public_events)
+            + len(discussions)
         )
 
         if total_events == 0:
@@ -117,6 +159,14 @@ async def recover_unposted_events(
             creations=len(creations),
             deletions=len(deletions),
             forks=len(forks),
+            stars=len(stars),
+            issue_comments=len(issue_comments),
+            pr_review_comments=len(pr_review_comments),
+            commit_comments=len(commit_comments),
+            members=len(members),
+            wiki_pages=len(wiki_pages),
+            public_events=len(public_events),
+            discussions=len(discussions),
         )
 
         # Post all events to Discord
@@ -129,6 +179,14 @@ async def recover_unposted_events(
             creations=creations,
             deletions=deletions,
             forks=forks,
+            stars=stars,
+            issue_comments=issue_comments,
+            pr_review_comments=pr_review_comments,
+            commit_comments=commit_comments,
+            members=members,
+            wiki_pages=wiki_pages,
+            public_events=public_events,
+            discussions=discussions,
             settings=settings,
         )
 
@@ -150,6 +208,28 @@ async def recover_unposted_events(
             if deletions
             else asyncio.sleep(0),
             db.mark_forks_posted([f.event_id for f in forks]) if forks else asyncio.sleep(0),
+            db.mark_stars_posted([s.event_id for s in stars]) if stars else asyncio.sleep(0),
+            db.mark_issue_comments_posted([ic.event_id for ic in issue_comments])
+            if issue_comments
+            else asyncio.sleep(0),
+            db.mark_pr_review_comments_posted([prc.event_id for prc in pr_review_comments])
+            if pr_review_comments
+            else asyncio.sleep(0),
+            db.mark_commit_comments_posted([cc.event_id for cc in commit_comments])
+            if commit_comments
+            else asyncio.sleep(0),
+            db.mark_members_posted([m.event_id for m in members])
+            if members
+            else asyncio.sleep(0),
+            db.mark_wiki_pages_posted([w.event_id for w in wiki_pages])
+            if wiki_pages
+            else asyncio.sleep(0),
+            db.mark_public_events_posted([pe.event_id for pe in public_events])
+            if public_events
+            else asyncio.sleep(0),
+            db.mark_discussions_posted([d.event_id for d in discussions])
+            if discussions
+            else asyncio.sleep(0),
         )
 
         logger.info("recovery.completed", posted=total_events)
