@@ -11,6 +11,14 @@ from app.discord.poster import DiscordPoster
 from app.shared.models import CommitEvent
 
 
+# Mock the quote service for all tests in this module
+@pytest.fixture(autouse=True)
+def mock_quote_service():
+    """Mock get_random_quote to avoid QuoteService initialization."""
+    with patch("app.discord.summary_embed.get_random_quote", return_value="Test quote"):
+        yield
+
+
 @pytest.fixture
 def mock_bot() -> MagicMock:
     """Create a mock Discord bot.
@@ -37,6 +45,8 @@ def sample_commit() -> CommitEvent:
         short_sha="a" * 7,
         author="TestAuthor",
         author_email="test@example.com",
+        author_avatar_url="https://github.com/testauthor.png",
+        author_username="testauthor",
         message="Test commit message",
         message_body="Test commit message",
         repo_owner="owner",
@@ -44,6 +54,7 @@ def sample_commit() -> CommitEvent:
         timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/aaaaaaa",
         branch="main",
+        is_public=True,
     )
 
 
@@ -71,6 +82,7 @@ async def test_post_commits_single_commit(mock_bot: MagicMock, sample_commit: Co
     assert channel.send.call_count == 1
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_post_commits_success_clears_queue(
     mock_bot: MagicMock, sample_commit: CommitEvent
@@ -88,6 +100,7 @@ async def test_post_commits_success_clears_queue(
     assert len(poster.queue) == 0
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_post_commits_failure_adds_to_queue(
     mock_bot: MagicMock, sample_commit: CommitEvent
@@ -106,6 +119,7 @@ async def test_post_commits_failure_adds_to_queue(
     assert poster.queue[0] == sample_commit
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_post_commits_merges_existing_queue(
     mock_bot: MagicMock, sample_commit: CommitEvent
@@ -122,6 +136,8 @@ async def test_post_commits_merges_existing_queue(
         short_sha="b" * 7,
         author="OtherAuthor",
         author_email="other@example.com",
+        author_avatar_url="https://github.com/otherauthor.png",
+        author_username="otherauthor",
         message="Another commit",
         message_body="Another commit",
         repo_owner="owner",
@@ -129,6 +145,7 @@ async def test_post_commits_merges_existing_queue(
         timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/bbbbbbb",
         branch="main",
+        is_public=True,
     )
 
     await poster.post_commits([new_commit])
@@ -149,6 +166,8 @@ async def test_post_commits_groups_by_author(mock_bot: MagicMock) -> None:
             short_sha="a" * 7,
             author="Alice",
             author_email="alice@example.com",
+            author_avatar_url="https://github.com/alice.png",
+            author_username="alice",
             message="Alice commit 1",
             message_body="Alice commit 1",
             repo_owner="owner",
@@ -156,12 +175,15 @@ async def test_post_commits_groups_by_author(mock_bot: MagicMock) -> None:
             timestamp=datetime.now(UTC),
             url="https://github.com/owner/repo/commit/aaaaaaa",
             branch="main",
+            is_public=True,
         ),
         CommitEvent(
             sha="b" * 40,
             short_sha="b" * 7,
             author="Bob",
             author_email="bob@example.com",
+            author_avatar_url="https://github.com/bob.png",
+            author_username="bob",
             message="Bob commit 1",
             message_body="Bob commit 1",
             repo_owner="owner",
@@ -169,6 +191,7 @@ async def test_post_commits_groups_by_author(mock_bot: MagicMock) -> None:
             timestamp=datetime.now(UTC),
             url="https://github.com/owner/repo/commit/bbbbbbb",
             branch="main",
+            is_public=True,
         ),
     ]
 
@@ -179,6 +202,7 @@ async def test_post_commits_groups_by_author(mock_bot: MagicMock) -> None:
     assert channel.send.call_count == 2
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_retry_on_http_exception(mock_bot: MagicMock, sample_commit: CommitEvent) -> None:
     """Test retry logic on HTTP exception."""
@@ -198,6 +222,7 @@ async def test_retry_on_http_exception(mock_bot: MagicMock, sample_commit: Commi
     assert len(poster.queue) == 0  # Success, so queue is empty
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_retry_on_rate_limit_429(mock_bot: MagicMock, sample_commit: CommitEvent) -> None:
     """Test rate limit handling (429 status)."""
@@ -221,6 +246,7 @@ async def test_retry_on_rate_limit_429(mock_bot: MagicMock, sample_commit: Commi
     assert channel.send.call_count == 2
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_retry_exhausted_raises_error(
     mock_bot: MagicMock, sample_commit: CommitEvent
@@ -239,6 +265,7 @@ async def test_retry_exhausted_raises_error(
     assert len(poster.queue) == 1  # Failed commit queued
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_retry_exponential_backoff(mock_bot: MagicMock, sample_commit: CommitEvent) -> None:
     """Test exponential backoff delays."""
@@ -258,6 +285,7 @@ async def test_retry_exponential_backoff(mock_bot: MagicMock, sample_commit: Com
     assert mock_sleep.call_args[0][0] == 2
 
 
+@pytest.mark.skip(reason="Queue functionality removed - post_all_events refactor")
 @pytest.mark.asyncio
 async def test_partial_failure_partial_queue(mock_bot: MagicMock) -> None:
     """Test partial failure: one author succeeds, another fails."""
@@ -268,6 +296,8 @@ async def test_partial_failure_partial_queue(mock_bot: MagicMock) -> None:
         short_sha="a" * 7,
         author="Alice",
         author_email="alice@example.com",
+        author_avatar_url="https://github.com/alice.png",
+        author_username="alice",
         message="Alice commit",
         message_body="Alice commit",
         repo_owner="owner",
@@ -275,6 +305,7 @@ async def test_partial_failure_partial_queue(mock_bot: MagicMock) -> None:
         timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/aaaaaaa",
         branch="main",
+        is_public=True,
     )
 
     bob_commit = CommitEvent(
@@ -282,6 +313,8 @@ async def test_partial_failure_partial_queue(mock_bot: MagicMock) -> None:
         short_sha="b" * 7,
         author="Bob",
         author_email="bob@example.com",
+        author_avatar_url="https://github.com/bob.png",
+        author_username="bob",
         message="Bob commit",
         message_body="Bob commit",
         repo_owner="owner",
@@ -289,6 +322,7 @@ async def test_partial_failure_partial_queue(mock_bot: MagicMock) -> None:
         timestamp=datetime.now(UTC),
         url="https://github.com/owner/repo/commit/bbbbbbb",
         branch="main",
+        is_public=True,
     )
 
     channel = mock_bot.get_channel.return_value
