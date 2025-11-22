@@ -30,10 +30,12 @@ async def generate_daily_summary(
         Discord embed with daily summary
     """
     if target_date is None:
-        target_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        # Get yesterday in UTC as naive datetime (database stores naive timestamps)
+        target_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
         target_date -= timedelta(days=1)  # Yesterday
 
-    day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Ensure datetimes are naive (database columns are TIMESTAMP without timezone)
+    day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     day_end = day_start + timedelta(days=1)
 
     # Get commits for the day
@@ -145,12 +147,15 @@ async def generate_weekly_summary(
         Discord embed with weekly summary
     """
     if week_start is None:
-        now = datetime.now(UTC)
+        # Get last Monday as naive datetime (database stores naive timestamps)
+        now = datetime.now(UTC).replace(tzinfo=None)
         days_since_monday = now.weekday()
         week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
             days=days_since_monday + 7
         )
 
+    # Ensure datetimes are naive
+    week_start = week_start.replace(tzinfo=None) if week_start.tzinfo else week_start
     week_end = week_start + timedelta(days=7)
 
     # Get week-specific counts
@@ -300,7 +305,8 @@ async def generate_monthly_summary(
         Discord embed with monthly summary
     """
     if month_start is None:
-        now = datetime.now(UTC)
+        # Get last month as naive datetime (database stores naive timestamps)
+        now = datetime.now(UTC).replace(tzinfo=None)
         if now.month == 1:
             month_start = now.replace(
                 year=now.year - 1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0
@@ -309,6 +315,9 @@ async def generate_monthly_summary(
             month_start = now.replace(
                 month=now.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0
             )
+
+    # Ensure datetimes are naive
+    month_start = month_start.replace(tzinfo=None) if month_start.tzinfo else month_start
 
     # Calculate next month start
     if month_start.month == 12:
