@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from types import TracebackType
 from typing import Any, ClassVar
 
 import asyncpg
@@ -9,6 +10,19 @@ import asyncpg
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.shared.exceptions import DatabaseError
+
+# TYPE_CHECKING import to avoid circular imports
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.nft.models import (
+        NFTBurnEvent,
+        NFTDelistingEvent,
+        NFTListingEvent,
+        NFTMintEvent,
+        NFTSaleEvent,
+        NFTTransferEvent,
+    )
 
 logger = get_logger(__name__)
 
@@ -72,7 +86,7 @@ class DatabaseClient:
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: Any,
+        exc_tb: TracebackType | None,
     ) -> None:
         """Close connection pool."""
         if self.pool:
@@ -2225,3 +2239,940 @@ class DatabaseClient:
         except asyncpg.PostgresError as e:
             logger.error("database.mark_discussions_posted.failed", error=str(e), exc_info=True)
             raise DatabaseError(f"Failed to mark discussions as posted: {e}") from e
+
+    # ==================== NFT Operations ====================
+
+    async def get_nft_collection_db_id(self, collection_id: str) -> int | None:
+        """Get database ID for an NFT collection by its string identifier.
+
+        Args:
+            collection_id: Collection string identifier (e.g., "aeon-forge-genesis")
+
+        Returns:
+            Database ID or None if not found
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = "SELECT id FROM nft_collections WHERE collection_id = $1"
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, collection_id)
+                return row["id"] if row else None
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_nft_collection_id.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get NFT collection ID: {e}") from e
+
+    async def sync_nft_collection(
+        self,
+        collection_id: str,
+        name: str,
+        chain: str,
+        contract_address: str,
+        discord_channel_id: int,
+        is_active: bool = True,
+    ) -> int:
+        """Sync NFT collection config to database.
+
+        Inserts or updates the collection record.
+
+        Args:
+            collection_id: Unique collection identifier
+            name: Collection name
+            chain: Blockchain network
+            contract_address: NFT contract address
+            discord_channel_id: Discord channel for notifications
+            is_active: Whether collection is active
+
+        Returns:
+            Database ID of the collection
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_collections (
+                collection_id, name, chain, contract_address, discord_channel_id, is_active
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (collection_id)
+            DO UPDATE SET
+                name = $2,
+                chain = $3,
+                contract_address = $4,
+                discord_channel_id = $5,
+                is_active = $6
+            RETURNING id
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    collection_id,
+                    name,
+                    chain,
+                    contract_address.lower(),
+                    discord_channel_id,
+                    is_active,
+                )
+                db_id: int = row["id"]
+                logger.info("database.sync_nft_collection.success", collection_id=collection_id)
+                return db_id
+        except asyncpg.PostgresError as e:
+            logger.error("database.sync_nft_collection.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to sync NFT collection: {e}") from e
+
+    async def insert_nft_mint(self, event: "NFTMintEvent") -> bool:
+        """Insert NFT mint event.
+
+        Args:
+            event: NFTMintEvent object
+
+        Returns:
+            True if inserted, False if duplicate
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_mints (
+                collection_id, token_id, to_address, price_native, price_usd,
+                transaction_hash, block_number, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
+            RETURNING id
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    event.collection_id,
+                    event.token_id,
+                    event.to_address,
+                    event.price_native,
+                    event.price_usd,
+                    event.transaction_hash,
+                    event.block_number,
+                    _to_naive_utc(event.event_timestamp),
+                )
+                return row is not None
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_nft_mint.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert NFT mint: {e}") from e
+
+    async def insert_nft_transfer(self, event: "NFTTransferEvent") -> bool:
+        """Insert NFT transfer event.
+
+        Args:
+            event: NFTTransferEvent object
+
+        Returns:
+            True if inserted, False if duplicate
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_transfers (
+                collection_id, token_id, from_address, to_address,
+                transaction_hash, block_number, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
+            RETURNING id
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    event.collection_id,
+                    event.token_id,
+                    event.from_address,
+                    event.to_address,
+                    event.transaction_hash,
+                    event.block_number,
+                    _to_naive_utc(event.event_timestamp),
+                )
+                return row is not None
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_nft_transfer.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert NFT transfer: {e}") from e
+
+    async def insert_nft_burn(self, event: "NFTBurnEvent") -> bool:
+        """Insert NFT burn event.
+
+        Args:
+            event: NFTBurnEvent object
+
+        Returns:
+            True if inserted, False if duplicate
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_burns (
+                collection_id, token_id, from_address,
+                transaction_hash, block_number, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
+            RETURNING id
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    event.collection_id,
+                    event.token_id,
+                    event.from_address,
+                    event.transaction_hash,
+                    event.block_number,
+                    _to_naive_utc(event.event_timestamp),
+                )
+                return row is not None
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_nft_burn.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert NFT burn: {e}") from e
+
+    async def insert_nft_listing(self, event: "NFTListingEvent") -> bool:
+        """Insert NFT listing event.
+
+        Args:
+            event: NFTListingEvent object
+
+        Returns:
+            True if inserted, False if duplicate
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_listings (
+                collection_id, token_id, token_name, token_image_url, seller_address,
+                marketplace, price_native, price_usd, floor_price_native, rarity_rank,
+                listing_id, event_timestamp, is_active
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (collection_id, marketplace, listing_id) DO NOTHING
+            RETURNING id
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    event.collection_id,
+                    event.token_id,
+                    event.token_name,
+                    event.token_image_url,
+                    event.seller_address,
+                    event.marketplace,
+                    event.price_native,
+                    event.price_usd,
+                    event.floor_price_native,
+                    event.rarity_rank,
+                    event.listing_id,
+                    _to_naive_utc(event.event_timestamp),
+                    event.is_active,
+                )
+                return row is not None
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_nft_listing.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert NFT listing: {e}") from e
+
+    async def insert_nft_sale(self, event: "NFTSaleEvent") -> bool:
+        """Insert NFT sale event.
+
+        Args:
+            event: NFTSaleEvent object
+
+        Returns:
+            True if inserted, False if duplicate
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_sales (
+                collection_id, token_id, token_name, token_image_url, seller_address,
+                buyer_address, marketplace, price_native, price_usd, floor_price_native,
+                rarity_rank, sale_id, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (collection_id, marketplace, sale_id) DO NOTHING
+            RETURNING id
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    event.collection_id,
+                    event.token_id,
+                    event.token_name,
+                    event.token_image_url,
+                    event.seller_address,
+                    event.buyer_address,
+                    event.marketplace,
+                    event.price_native,
+                    event.price_usd,
+                    event.floor_price_native,
+                    event.rarity_rank,
+                    event.sale_id,
+                    _to_naive_utc(event.event_timestamp),
+                )
+                return row is not None
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_nft_sale.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert NFT sale: {e}") from e
+
+    async def insert_nft_delisting(self, event: "NFTDelistingEvent") -> bool:
+        """Insert NFT delisting event.
+
+        Args:
+            event: NFTDelistingEvent object
+
+        Returns:
+            True if inserted, False if duplicate
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_delistings (
+                collection_id, token_id, token_name, seller_address, marketplace,
+                original_price_native, delisting_id, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (collection_id, marketplace, delisting_id) DO NOTHING
+            RETURNING id
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    event.collection_id,
+                    event.token_id,
+                    event.token_name,
+                    event.seller_address,
+                    event.marketplace,
+                    event.original_price_native,
+                    event.delisting_id,
+                    _to_naive_utc(event.event_timestamp),
+                )
+                return row is not None
+        except asyncpg.PostgresError as e:
+            logger.error("database.insert_nft_delisting.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to insert NFT delisting: {e}") from e
+
+    async def mark_nft_mint_posted(
+        self, collection_id: int, token_id: str, transaction_hash: str | None
+    ) -> None:
+        """Mark NFT mint as posted to Discord.
+
+        Args:
+            collection_id: Database collection ID
+            token_id: NFT token ID
+            transaction_hash: Transaction hash
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            UPDATE nft_mints
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE collection_id = $1 AND token_id = $2 AND transaction_hash = $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, collection_id, token_id, transaction_hash)
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_nft_mint_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark NFT mint posted: {e}") from e
+
+    async def mark_nft_transfer_posted(
+        self, collection_id: int, token_id: str, transaction_hash: str | None
+    ) -> None:
+        """Mark NFT transfer as posted to Discord.
+
+        Args:
+            collection_id: Database collection ID
+            token_id: NFT token ID
+            transaction_hash: Transaction hash
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            UPDATE nft_transfers
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE collection_id = $1 AND token_id = $2 AND transaction_hash = $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, collection_id, token_id, transaction_hash)
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_nft_transfer_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark NFT transfer posted: {e}") from e
+
+    async def mark_nft_burn_posted(
+        self, collection_id: int, token_id: str, transaction_hash: str | None
+    ) -> None:
+        """Mark NFT burn as posted to Discord.
+
+        Args:
+            collection_id: Database collection ID
+            token_id: NFT token ID
+            transaction_hash: Transaction hash
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            UPDATE nft_burns
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE collection_id = $1 AND token_id = $2 AND transaction_hash = $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, collection_id, token_id, transaction_hash)
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_nft_burn_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark NFT burn posted: {e}") from e
+
+    async def mark_nft_listing_posted(
+        self, collection_id: int, marketplace: str, listing_id: str
+    ) -> None:
+        """Mark NFT listing as posted to Discord.
+
+        Args:
+            collection_id: Database collection ID
+            marketplace: Marketplace name
+            listing_id: Listing ID
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            UPDATE nft_listings
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE collection_id = $1 AND marketplace = $2 AND listing_id = $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, collection_id, marketplace, listing_id)
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_nft_listing_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark NFT listing posted: {e}") from e
+
+    async def mark_nft_sale_posted(
+        self, collection_id: int, marketplace: str, sale_id: str
+    ) -> None:
+        """Mark NFT sale as posted to Discord.
+
+        Args:
+            collection_id: Database collection ID
+            marketplace: Marketplace name
+            sale_id: Sale ID
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            UPDATE nft_sales
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE collection_id = $1 AND marketplace = $2 AND sale_id = $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, collection_id, marketplace, sale_id)
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_nft_sale_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark NFT sale posted: {e}") from e
+
+    async def mark_nft_delisting_posted(
+        self, collection_id: int, marketplace: str, delisting_id: str
+    ) -> None:
+        """Mark NFT delisting as posted to Discord.
+
+        Args:
+            collection_id: Database collection ID
+            marketplace: Marketplace name
+            delisting_id: Delisting ID
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            UPDATE nft_delistings
+            SET posted_to_discord = TRUE, posted_at = NOW()
+            WHERE collection_id = $1 AND marketplace = $2 AND delisting_id = $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, collection_id, marketplace, delisting_id)
+        except asyncpg.PostgresError as e:
+            logger.error("database.mark_nft_delisting_posted.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to mark NFT delisting posted: {e}") from e
+
+    async def get_nft_marketplace_state(
+        self, collection_id: int, marketplace: str
+    ) -> datetime | None:
+        """Get last poll timestamp for a collection/marketplace pair.
+
+        Args:
+            collection_id: Database collection ID
+            marketplace: Marketplace name
+
+        Returns:
+            Last poll timestamp or None if never polled
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            SELECT last_poll_timestamp FROM nft_marketplace_state
+            WHERE collection_id = $1 AND marketplace = $2
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, collection_id, marketplace)
+                if row and row["last_poll_timestamp"]:
+                    # Add UTC timezone to naive datetime
+                    return row["last_poll_timestamp"].replace(tzinfo=UTC)
+                return None
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_nft_marketplace_state.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get marketplace state: {e}") from e
+
+    async def set_nft_marketplace_state(
+        self, collection_id: int, marketplace: str, event_id: str | None = None
+    ) -> None:
+        """Update marketplace polling state.
+
+        Args:
+            collection_id: Database collection ID
+            marketplace: Marketplace name
+            event_id: Optional last event ID for cursor pagination
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        query = """
+            INSERT INTO nft_marketplace_state (collection_id, marketplace, last_poll_timestamp, last_event_id)
+            VALUES ($1, $2, NOW(), $3)
+            ON CONFLICT (collection_id, marketplace)
+            DO UPDATE SET last_poll_timestamp = NOW(), last_event_id = $3, updated_at = NOW()
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, collection_id, marketplace, event_id)
+        except asyncpg.PostgresError as e:
+            logger.error("database.set_nft_marketplace_state.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to set marketplace state: {e}") from e
+
+    async def get_unposted_nft_mints(
+        self, max_age_hours: int = 12
+    ) -> list[tuple[int, "NFTMintEvent", str, int]]:
+        """Get unposted NFT mint events for recovery.
+
+        Args:
+            max_age_hours: Maximum age of events to retrieve
+
+        Returns:
+            List of tuples: (db_id, NFTMintEvent, collection_name, discord_channel_id)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.nft.models import NFTMintEvent
+
+        query = """
+            SELECT m.*, c.name as collection_name, c.discord_channel_id
+            FROM nft_mints m
+            JOIN nft_collections c ON m.collection_id = c.id
+            WHERE m.posted_to_discord = FALSE
+              AND m.created_at > NOW() - $1::interval
+              AND c.is_active = TRUE
+            ORDER BY m.event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                results = []
+                for row in rows:
+                    event = NFTMintEvent(
+                        collection_id=row["collection_id"],
+                        token_id=row["token_id"],
+                        to_address=row["to_address"],
+                        price_native=row["price_native"],
+                        price_usd=row["price_usd"],
+                        transaction_hash=row["transaction_hash"],
+                        block_number=row["block_number"],
+                        event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),
+                    )
+                    results.append(
+                        (
+                            row["id"],
+                            event,
+                            row["collection_name"],
+                            row["discord_channel_id"],
+                        )
+                    )
+                return results
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_nft_mints.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted NFT mints: {e}") from e
+
+    async def get_unposted_nft_transfers(
+        self, max_age_hours: int = 12
+    ) -> list[tuple[int, "NFTTransferEvent", str, int]]:
+        """Get unposted NFT transfer events for recovery.
+
+        Args:
+            max_age_hours: Maximum age of events to retrieve
+
+        Returns:
+            List of tuples: (db_id, NFTTransferEvent, collection_name, discord_channel_id)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.nft.models import NFTTransferEvent
+
+        query = """
+            SELECT t.*, c.name as collection_name, c.discord_channel_id
+            FROM nft_transfers t
+            JOIN nft_collections c ON t.collection_id = c.id
+            WHERE t.posted_to_discord = FALSE
+              AND t.created_at > NOW() - $1::interval
+              AND c.is_active = TRUE
+            ORDER BY t.event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                results = []
+                for row in rows:
+                    event = NFTTransferEvent(
+                        collection_id=row["collection_id"],
+                        token_id=row["token_id"],
+                        from_address=row["from_address"],
+                        to_address=row["to_address"],
+                        transaction_hash=row["transaction_hash"],
+                        block_number=row["block_number"],
+                        event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),
+                    )
+                    results.append(
+                        (
+                            row["id"],
+                            event,
+                            row["collection_name"],
+                            row["discord_channel_id"],
+                        )
+                    )
+                return results
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_nft_transfers.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted NFT transfers: {e}") from e
+
+    async def get_unposted_nft_burns(
+        self, max_age_hours: int = 12
+    ) -> list[tuple[int, "NFTBurnEvent", str, int]]:
+        """Get unposted NFT burn events for recovery.
+
+        Args:
+            max_age_hours: Maximum age of events to retrieve
+
+        Returns:
+            List of tuples: (db_id, NFTBurnEvent, collection_name, discord_channel_id)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.nft.models import NFTBurnEvent
+
+        query = """
+            SELECT b.*, c.name as collection_name, c.discord_channel_id
+            FROM nft_burns b
+            JOIN nft_collections c ON b.collection_id = c.id
+            WHERE b.posted_to_discord = FALSE
+              AND b.created_at > NOW() - $1::interval
+              AND c.is_active = TRUE
+            ORDER BY b.event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                results = []
+                for row in rows:
+                    event = NFTBurnEvent(
+                        collection_id=row["collection_id"],
+                        token_id=row["token_id"],
+                        from_address=row["from_address"],
+                        transaction_hash=row["transaction_hash"],
+                        block_number=row["block_number"],
+                        event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),
+                    )
+                    results.append(
+                        (
+                            row["id"],
+                            event,
+                            row["collection_name"],
+                            row["discord_channel_id"],
+                        )
+                    )
+                return results
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_nft_burns.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted NFT burns: {e}") from e
+
+    async def get_unposted_nft_listings(
+        self, max_age_hours: int = 12
+    ) -> list[tuple[int, "NFTListingEvent", str, int]]:
+        """Get unposted NFT listing events for recovery.
+
+        Args:
+            max_age_hours: Maximum age of events to retrieve
+
+        Returns:
+            List of tuples: (db_id, NFTListingEvent, collection_name, discord_channel_id)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.nft.models import NFTListingEvent
+
+        query = """
+            SELECT l.*, c.name as collection_name, c.discord_channel_id
+            FROM nft_listings l
+            JOIN nft_collections c ON l.collection_id = c.id
+            WHERE l.posted_to_discord = FALSE
+              AND l.created_at > NOW() - $1::interval
+              AND c.is_active = TRUE
+            ORDER BY l.event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                results = []
+                for row in rows:
+                    event = NFTListingEvent(
+                        collection_id=row["collection_id"],
+                        token_id=row["token_id"],
+                        token_name=row["token_name"],
+                        token_image_url=row["token_image_url"],
+                        seller_address=row["seller_address"],
+                        marketplace=row["marketplace"],
+                        price_native=row["price_native"],
+                        price_usd=row["price_usd"],
+                        floor_price_native=row["floor_price_native"],
+                        rarity_rank=row["rarity_rank"],
+                        listing_id=row["listing_id"],
+                        event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),
+                        is_active=row["is_active"],
+                    )
+                    results.append(
+                        (
+                            row["id"],
+                            event,
+                            row["collection_name"],
+                            row["discord_channel_id"],
+                        )
+                    )
+                return results
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_nft_listings.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted NFT listings: {e}") from e
+
+    async def get_unposted_nft_sales(
+        self, max_age_hours: int = 12
+    ) -> list[tuple[int, "NFTSaleEvent", str, int]]:
+        """Get unposted NFT sale events for recovery.
+
+        Args:
+            max_age_hours: Maximum age of events to retrieve
+
+        Returns:
+            List of tuples: (db_id, NFTSaleEvent, collection_name, discord_channel_id)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.nft.models import NFTSaleEvent
+
+        query = """
+            SELECT s.*, c.name as collection_name, c.discord_channel_id
+            FROM nft_sales s
+            JOIN nft_collections c ON s.collection_id = c.id
+            WHERE s.posted_to_discord = FALSE
+              AND s.created_at > NOW() - $1::interval
+              AND c.is_active = TRUE
+            ORDER BY s.event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                results = []
+                for row in rows:
+                    event = NFTSaleEvent(
+                        collection_id=row["collection_id"],
+                        token_id=row["token_id"],
+                        token_name=row["token_name"],
+                        token_image_url=row["token_image_url"],
+                        seller_address=row["seller_address"],
+                        buyer_address=row["buyer_address"],
+                        marketplace=row["marketplace"],
+                        price_native=row["price_native"],
+                        price_usd=row["price_usd"],
+                        floor_price_native=row["floor_price_native"],
+                        rarity_rank=row["rarity_rank"],
+                        sale_id=row["sale_id"],
+                        event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),
+                    )
+                    results.append(
+                        (
+                            row["id"],
+                            event,
+                            row["collection_name"],
+                            row["discord_channel_id"],
+                        )
+                    )
+                return results
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_nft_sales.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted NFT sales: {e}") from e
+
+    async def get_unposted_nft_delistings(
+        self, max_age_hours: int = 12
+    ) -> list[tuple[int, "NFTDelistingEvent", str, int]]:
+        """Get unposted NFT delisting events for recovery.
+
+        Args:
+            max_age_hours: Maximum age of events to retrieve
+
+        Returns:
+            List of tuples: (db_id, NFTDelistingEvent, collection_name, discord_channel_id)
+
+        Raises:
+            DatabaseError: If connection pool is not initialized or query fails
+        """
+        if not self.pool:
+            raise DatabaseError("Connection pool not initialized")
+
+        from app.nft.models import NFTDelistingEvent
+
+        query = """
+            SELECT d.*, c.name as collection_name, c.discord_channel_id
+            FROM nft_delistings d
+            JOIN nft_collections c ON d.collection_id = c.id
+            WHERE d.posted_to_discord = FALSE
+              AND d.created_at > NOW() - $1::interval
+              AND c.is_active = TRUE
+            ORDER BY d.event_timestamp ASC
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, timedelta(hours=max_age_hours))
+                results = []
+                for row in rows:
+                    event = NFTDelistingEvent(
+                        collection_id=row["collection_id"],
+                        token_id=row["token_id"],
+                        token_name=row["token_name"],
+                        seller_address=row["seller_address"],
+                        marketplace=row["marketplace"],
+                        original_price_native=row["original_price_native"],
+                        delisting_id=row["delisting_id"],
+                        event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),
+                    )
+                    results.append(
+                        (
+                            row["id"],
+                            event,
+                            row["collection_name"],
+                            row["discord_channel_id"],
+                        )
+                    )
+                return results
+        except asyncpg.PostgresError as e:
+            logger.error("database.get_unposted_nft_delistings.failed", error=str(e), exc_info=True)
+            raise DatabaseError(f"Failed to get unposted NFT delistings: {e}") from e

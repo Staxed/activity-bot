@@ -31,7 +31,9 @@ async def generate_daily_summary(
     """
     if target_date is None:
         # Get yesterday in UTC as naive datetime (database stores naive timestamps)
-        target_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+        target_date = datetime.now(UTC).replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+        )
         target_date -= timedelta(days=1)  # Yesterday
 
     # Ensure datetimes are naive (database columns are TIMESTAMP without timezone)

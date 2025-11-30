@@ -119,6 +119,7 @@ temp/
 # ------------------------------
 # VS Code
 .vscode/
+.devcontainer/
 *.code-workspace
 
 # PyCharm

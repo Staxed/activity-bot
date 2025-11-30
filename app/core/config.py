@@ -93,6 +93,20 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: str = "development"
 
+    # NFT Tracking settings
+    nft_enabled: bool = False
+    nft_collections_config: str = "collections.json"
+    nft_marketplace_poll_interval_minutes: int = 2
+
+    # Thirdweb Insight Webhooks
+    thirdweb_webhook_secret: str = ""
+    webhook_server_port: int = 8080
+    webhook_server_host: str = "0.0.0.0"
+
+    # Marketplace API Keys
+    opensea_api_key: str = ""
+    rarible_api_key: str = ""
+
     # Valid log levels
     VALID_LOG_LEVELS: ClassVar[set[str]] = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
