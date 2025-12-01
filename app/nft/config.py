@@ -75,7 +75,7 @@ class NFTCollectionConfig(BaseModel):
         Raises:
             ValueError: If chain is not supported
         """
-        supported_chains = {"base", "ethereum", "polygon", "arbitrum", "optimism"}
+        supported_chains = {"base", "base-sepolia", "ethereum", "polygon", "arbitrum", "optimism"}
         v_lower = v.lower()
         if v_lower not in supported_chains:
             raise ValueError(f"Chain must be one of: {', '.join(sorted(supported_chains))}")

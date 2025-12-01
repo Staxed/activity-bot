@@ -48,85 +48,139 @@ class ThirdwebEventHandler:
         Args:
             payload: Webhook payload containing event data
         """
-        event_type = payload.get("type", "")
+        import json
+        logger.info(
+            "handler.event.received",
+            payload_keys=list(payload.keys()),
+        )
 
-        if event_type != "transfer":
-            logger.debug("thirdweb.event.skipped", event_type=event_type)
+        # Thirdweb sends events in a "data" array
+        events = payload.get("data", [])
+        if not isinstance(events, list):
+            events = [events]
+
+        logger.info("handler.events_count", count=len(events))
+
+        for idx, event_wrapper in enumerate(events):
+            logger.info(f"handler.processing_event_{idx}", event_keys=list(event_wrapper.keys()) if isinstance(event_wrapper, dict) else "not_dict")
+            await self._process_single_event(event_wrapper)
+
+    async def _process_single_event(self, event_wrapper: dict[str, Any]) -> None:
+        """Process a single event from Thirdweb webhook."""
+        import json
+
+        # The actual event data is nested
+        event_data = event_wrapper.get("data", {})
+        decoded = event_data.get("decoded", {})
+
+        logger.info(
+            "handler.event_structure",
+            wrapper_type=event_wrapper.get("type"),
+            decoded_name=decoded.get("name"),
+            has_indexed_params="indexed_params" in decoded,
+        )
+
+        # Check if this is a Transfer event
+        if decoded.get("name") != "Transfer":
+            logger.info("handler.not_transfer_event", event_name=decoded.get("name"))
             return
 
-        # Extract event data
-        data = payload.get("data", {})
-        contract_address = (
-            data.get("contractAddress") or payload.get("contractAddress", "")
-        ).lower()
-        chain = (data.get("chain") or payload.get("chain", "")).lower()
+        # Extract data from decoded params
+        indexed_params = decoded.get("indexed_params", {})
+        from_address = indexed_params.get("from", "").lower()
+        to_address = indexed_params.get("to", "").lower()
+        token_id = str(indexed_params.get("tokenId", ""))
 
-        # Map chain names to our format
-        chain_mapping = {
-            "base": "base",
-            "base-mainnet": "base",
-            "ethereum": "ethereum",
-            "eth-mainnet": "ethereum",
-            "polygon": "polygon",
-            "polygon-mainnet": "polygon",
+        # Extract chain and contract from event_data
+        chain_id = event_data.get("chain_id") or event_data.get("chainId")
+        contract_address = (event_data.get("address") or "").lower()
+        transaction_hash = event_data.get("transaction_hash") or event_data.get("transactionHash") or ""
+        block_number = event_data.get("block_number") or event_data.get("blockNumber") or 0
+        block_timestamp = event_data.get("block_timestamp") or event_data.get("blockTimestamp")
+
+        # Map chain ID to name
+        chain_id_map = {
+            "8453": "base",
+            "84532": "base-sepolia",
+            "1": "ethereum",
+            "137": "polygon",
+            8453: "base",
+            84532: "base-sepolia",
+            1: "ethereum",
+            137: "polygon",
         }
-        chain = chain_mapping.get(chain, chain)
+        chain = chain_id_map.get(chain_id, str(chain_id) if chain_id else "")
+
+        logger.info(
+            "handler.extracted_transfer",
+            from_address=from_address,
+            to_address=to_address,
+            token_id=token_id,
+            chain_id=chain_id,
+            chain=chain,
+            contract=contract_address,
+            tx_hash=transaction_hash[:20] if transaction_hash else "none",
+        )
 
         # Find matching collection
         config = get_collections_config()
+        logger.info(
+            "handler.collections.available",
+            collections=[
+                {"id": c.id, "chain": c.chain, "contract": c.contract_address[:10]}
+                for c in config.collections
+            ],
+        )
+
         collection = config.get_collection_by_contract(chain, contract_address)
 
         if not collection:
-            logger.debug(
-                "thirdweb.event.no_collection",
+            logger.warning(
+                "handler.no_collection_match",
                 chain=chain,
-                contract=contract_address[:10] + "...",
+                contract=contract_address,
+                available_chains=[c.chain for c in config.collections],
+                available_contracts=[c.contract_address.lower() for c in config.collections],
             )
             return
 
+        logger.info("handler.collection.matched", collection_id=collection.id, collection_name=collection.name)
+
         if not collection.track_onchain:
-            logger.debug(
-                "thirdweb.event.tracking_disabled",
-                collection_id=collection.id,
-            )
+            logger.info("handler.tracking_disabled", collection_id=collection.id)
             return
 
         # Get collection database ID
         db_collection_id = await self._get_or_create_collection_id(collection.id)
         if not db_collection_id:
-            logger.error("thirdweb.event.no_db_collection", collection_id=collection.id)
+            logger.error("handler.no_db_collection", collection_id=collection.id)
             return
 
-        # Parse transfer event
-        from_address = data.get("from", "").lower()
-        to_address = data.get("to", "").lower()
-        token_id = str(data.get("tokenId", ""))
-        transaction_hash = data.get("transactionHash", "")
-        block_number = data.get("blockNumber", 0)
+        logger.info("handler.db_collection_id", db_id=db_collection_id)
 
         # Parse timestamp
-        timestamp_value = data.get("timestamp") or data.get("blockTimestamp")
-        if isinstance(timestamp_value, (int, float)):
-            timestamp = datetime.fromtimestamp(timestamp_value, tz=UTC)
-        elif isinstance(timestamp_value, str):
-            timestamp = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
+        if isinstance(block_timestamp, (int, float)):
+            timestamp = datetime.fromtimestamp(block_timestamp, tz=UTC)
         else:
             timestamp = datetime.now(UTC)
 
-        # Parse price if available (for mints)
+        # Parse price if available (for mints) - usually not in Transfer events
         price_native: Decimal | None = None
         price_usd: Decimal | None = None
-        if data.get("value"):
-            try:
-                # Value in wei, convert to ETH
-                value_wei = int(data["value"])
-                price_native = Decimal(value_wei) / Decimal("1000000000000000000")
-            except (ValueError, TypeError):
-                pass
 
         # Determine event type based on addresses
+        logger.info(
+            "handler.determining_event_type",
+            from_address=from_address,
+            to_address=to_address,
+            zero_address=ZERO_ADDRESS,
+            is_mint=(from_address == ZERO_ADDRESS),
+            is_burn=(to_address == ZERO_ADDRESS),
+        )
+
         if from_address == ZERO_ADDRESS:
             # Mint event
+            logger.info("handler.processing_mint", token_id=token_id)
             await self._handle_mint(
                 collection_id=db_collection_id,
                 collection_name=collection.name,
@@ -141,6 +195,7 @@ class ThirdwebEventHandler:
             )
         elif to_address == ZERO_ADDRESS:
             # Burn event
+            logger.info("handler.processing_burn", token_id=token_id)
             await self._handle_burn(
                 collection_id=db_collection_id,
                 collection_name=collection.name,
@@ -153,6 +208,7 @@ class ThirdwebEventHandler:
             )
         else:
             # Transfer event
+            logger.info("handler.processing_transfer", token_id=token_id)
             await self._handle_transfer(
                 collection_id=db_collection_id,
                 collection_name=collection.name,

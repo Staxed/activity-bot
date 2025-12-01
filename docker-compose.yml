@@ -14,6 +14,7 @@ services:
     volumes:
       - ./app:/app/app:ro
       - ./data:/app/data
+      - ./collections.json:/app/collections.json:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s

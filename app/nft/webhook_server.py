@@ -101,11 +101,11 @@ class WebhookServer:
     def _verify_signature(self, payload: bytes, signature: str) -> bool:
         """Verify Thirdweb webhook signature.
 
-        Thirdweb uses HMAC-SHA256 for webhook signatures.
+        Thirdweb uses HMAC-SHA256 over the raw request body.
 
         Args:
             payload: Raw request body
-            signature: Signature from X-Thirdweb-Signature header
+            signature: Signature from X-Webhook-Signature header
 
         Returns:
             True if signature is valid, False otherwise
@@ -142,7 +142,7 @@ class WebhookServer:
             return web.json_response({"error": "Failed to read body"}, status=400)
 
         # Validate signature
-        signature = request.headers.get("X-Thirdweb-Signature", "")
+        signature = request.headers.get("X-Webhook-Signature", "")
         if not signature:
             logger.warning("webhook.signature.missing")
             return web.json_response({"error": "Missing signature"}, status=401)
@@ -158,10 +158,11 @@ class WebhookServer:
             logger.error("webhook.parse.failed", error=str(e))
             return web.json_response({"error": "Invalid JSON"}, status=400)
 
+        # Log full payload for debugging
+        import json
         logger.info(
-            "webhook.received",
-            event_type=payload.get("type"),
-            contract=payload.get("contractAddress", "")[:10] + "...",
+            "webhook.payload.received",
+            full_payload=json.dumps(payload, indent=2, default=str),
         )
 
         # Return 200 immediately, process async

@@ -1,0 +1,30 @@
+{
+  "collections": [
+    {
+      "id": "test-nft",
+      "name": "Test NFT",
+      "chain": "base",
+      "contract_address": "0xc7c1b8a5d8777dac959cb2b274debeda1c0ecc09",
+      "discord_channel_id": 1215729486994210897,
+      "track_onchain": true,
+      "track_marketplace": true,
+      "marketplaces": [
+        "magic_eden",
+        "opensea",
+        "rarible"
+      ],
+      "is_active": true
+    },
+    {
+      "id": "sepolia-test",
+      "name": "Sepolia Test Mint",
+      "chain": "base-sepolia",
+      "contract_address": "0xAD1F02D8b22FeD6798A6474B65a5778cc0918aFC",
+      "discord_channel_id": 1215729486994210897,
+      "track_onchain": true,
+      "track_marketplace": false,
+      "marketplaces": [],
+      "is_active": true
+    }
+  ]
+}

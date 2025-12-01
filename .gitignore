@@ -93,6 +93,9 @@ docker-compose.override.yml
 # ------------------------------
 # Project-Specific
 # ------------------------------
+# Deployment staging (contains secrets)
+deploy-staging/
+
 # Runtime state files
 data/*
 !data/.gitkeep
