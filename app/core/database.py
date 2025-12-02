@@ -2345,9 +2345,9 @@ class DatabaseClient:
 
         query = """
             INSERT INTO nft_mints (
-                collection_id, token_id, to_address, price_native, price_usd,
-                transaction_hash, block_number, event_timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                collection_id, token_id, to_address, token_image_url,
+                price_native, price_usd, transaction_hash, block_number, event_timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
             RETURNING id
         """
@@ -2359,6 +2359,7 @@ class DatabaseClient:
                     event.collection_id,
                     event.token_id,
                     event.to_address,
+                    event.token_image_url,
                     event.price_native,
                     event.price_usd,
                     event.transaction_hash,
@@ -2387,9 +2388,9 @@ class DatabaseClient:
 
         query = """
             INSERT INTO nft_transfers (
-                collection_id, token_id, from_address, to_address,
+                collection_id, token_id, from_address, to_address, token_image_url,
                 transaction_hash, block_number, event_timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
             RETURNING id
         """
@@ -2402,6 +2403,7 @@ class DatabaseClient:
                     event.token_id,
                     event.from_address,
                     event.to_address,
+                    event.token_image_url,
                     event.transaction_hash,
                     event.block_number,
                     _to_naive_utc(event.event_timestamp),
@@ -2428,9 +2430,9 @@ class DatabaseClient:
 
         query = """
             INSERT INTO nft_burns (
-                collection_id, token_id, from_address,
+                collection_id, token_id, from_address, token_image_url,
                 transaction_hash, block_number, event_timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
             RETURNING id
         """
@@ -2442,6 +2444,7 @@ class DatabaseClient:
                     event.collection_id,
                     event.token_id,
                     event.from_address,
+                    event.token_image_url,
                     event.transaction_hash,
                     event.block_number,
                     _to_naive_utc(event.event_timestamp),

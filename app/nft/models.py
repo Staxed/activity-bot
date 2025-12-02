@@ -43,6 +43,7 @@ class NFTMintEvent(BaseModel):
         collection_id: Database ID of the collection
         token_id: NFT token ID
         to_address: Address receiving the minted NFT
+        chain: Blockchain network (e.g., 'base', 'ethereum')
         token_image_url: NFT image URL (if available)
         price_native: Mint price in native currency (ETH)
         price_usd: Mint price in USD (if available)
@@ -54,6 +55,7 @@ class NFTMintEvent(BaseModel):
     collection_id: int = Field(..., description="Database collection ID")
     token_id: str = Field(..., description="NFT token ID")
     to_address: str = Field(..., description="Minter/recipient address")
+    chain: str = Field(default="base", description="Blockchain network")
     token_image_url: str | None = Field(None, description="NFT image URL")
     price_native: Decimal | None = Field(None, description="Mint price in ETH")
     price_usd: Decimal | None = Field(None, description="Mint price in USD")
@@ -91,6 +93,7 @@ class NFTMintEvent(BaseModel):
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        chain: str = "base",
         price_native: Decimal | None = None,
         price_usd: Decimal | None = None,
         token_image_url: str | None = None,
@@ -104,6 +107,7 @@ class NFTMintEvent(BaseModel):
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            chain: Blockchain network
             price_native: Optional mint price in ETH
             price_usd: Optional mint price in USD
             token_image_url: Optional token image URL
@@ -115,6 +119,7 @@ class NFTMintEvent(BaseModel):
             collection_id=collection_id,
             token_id=token_id,
             to_address=to_address,
+            chain=chain,
             token_image_url=token_image_url,
             price_native=price_native,
             price_usd=price_usd,
@@ -132,6 +137,7 @@ class NFTTransferEvent(BaseModel):
         token_id: NFT token ID
         from_address: Address sending the NFT
         to_address: Address receiving the NFT
+        chain: Blockchain network (e.g., 'base', 'ethereum')
         token_image_url: NFT image URL (if available)
         transaction_hash: On-chain transaction hash
         block_number: Block number of the transaction
@@ -142,6 +148,7 @@ class NFTTransferEvent(BaseModel):
     token_id: str = Field(..., description="NFT token ID")
     from_address: str = Field(..., description="Sender address")
     to_address: str = Field(..., description="Recipient address")
+    chain: str = Field(default="base", description="Blockchain network")
     token_image_url: str | None = Field(None, description="NFT image URL")
     transaction_hash: str | None = Field(None, description="Transaction hash")
     block_number: int | None = Field(None, description="Block number")
@@ -183,6 +190,7 @@ class NFTTransferEvent(BaseModel):
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        chain: str = "base",
         token_image_url: str | None = None,
     ) -> "NFTTransferEvent":
         """Create from Thirdweb Insight webhook data.
@@ -195,6 +203,7 @@ class NFTTransferEvent(BaseModel):
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            chain: Blockchain network
             token_image_url: Optional token image URL
 
         Returns:
@@ -205,6 +214,7 @@ class NFTTransferEvent(BaseModel):
             token_id=token_id,
             from_address=from_address,
             to_address=to_address,
+            chain=chain,
             token_image_url=token_image_url,
             transaction_hash=transaction_hash,
             block_number=block_number,
@@ -219,6 +229,7 @@ class NFTBurnEvent(BaseModel):
         collection_id: Database ID of the collection
         token_id: NFT token ID
         from_address: Address burning the NFT
+        chain: Blockchain network (e.g., 'base', 'ethereum')
         token_image_url: NFT image URL (if available)
         transaction_hash: On-chain transaction hash
         block_number: Block number of the transaction
@@ -228,6 +239,7 @@ class NFTBurnEvent(BaseModel):
     collection_id: int = Field(..., description="Database collection ID")
     token_id: str = Field(..., description="NFT token ID")
     from_address: str = Field(..., description="Burner address")
+    chain: str = Field(default="base", description="Blockchain network")
     token_image_url: str | None = Field(None, description="NFT image URL")
     transaction_hash: str | None = Field(None, description="Transaction hash")
     block_number: int | None = Field(None, description="Block number")
@@ -263,6 +275,7 @@ class NFTBurnEvent(BaseModel):
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        chain: str = "base",
         token_image_url: str | None = None,
     ) -> "NFTBurnEvent":
         """Create from Thirdweb Insight webhook data.
@@ -274,6 +287,7 @@ class NFTBurnEvent(BaseModel):
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            chain: Blockchain network
             token_image_url: Optional token image URL
 
         Returns:
@@ -283,6 +297,7 @@ class NFTBurnEvent(BaseModel):
             collection_id=collection_id,
             token_id=token_id,
             from_address=from_address,
+            chain=chain,
             token_image_url=token_image_url,
             transaction_hash=transaction_hash,
             block_number=block_number,

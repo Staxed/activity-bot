@@ -21,6 +21,30 @@ from app.nft.models import (
     NFTTransferEvent,
 )
 
+# Chain to block explorer URL mapping
+CHAIN_EXPLORERS: dict[str, str] = {
+    "base": "https://basescan.org",
+    "base-sepolia": "https://sepolia.basescan.org",
+    "ethereum": "https://etherscan.io",
+    "polygon": "https://polygonscan.com",
+    "arbitrum": "https://arbiscan.io",
+    "optimism": "https://optimistic.etherscan.io",
+}
+
+
+def _get_explorer_url(chain: str, tx_hash: str) -> str:
+    """Get block explorer URL for a transaction.
+
+    Args:
+        chain: Blockchain network name
+        tx_hash: Transaction hash
+
+    Returns:
+        Full URL to transaction on block explorer
+    """
+    base_url = CHAIN_EXPLORERS.get(chain, CHAIN_EXPLORERS["base"])
+    return f"{base_url}/tx/{tx_hash}"
+
 
 def _format_eth_price(price: Decimal | None, price_usd: Decimal | None = None) -> str:
     """Format ETH price with optional USD value.
@@ -99,7 +123,7 @@ def create_mint_embed(event: NFTMintEvent, collection_name: str) -> discord.Embe
         )
 
     if event.transaction_hash:
-        explorer_url = f"https://basescan.org/tx/{event.transaction_hash}"
+        explorer_url = _get_explorer_url(event.chain, event.transaction_hash)
         embed.add_field(
             name="Transaction",
             value=f"[View on Explorer]({explorer_url})",
@@ -142,7 +166,7 @@ def create_transfer_embed(event: NFTTransferEvent, collection_name: str) -> disc
     )
 
     if event.transaction_hash:
-        explorer_url = f"https://basescan.org/tx/{event.transaction_hash}"
+        explorer_url = _get_explorer_url(event.chain, event.transaction_hash)
         embed.add_field(
             name="Transaction",
             value=f"[View on Explorer]({explorer_url})",
@@ -179,7 +203,7 @@ def create_burn_embed(event: NFTBurnEvent, collection_name: str) -> discord.Embe
     )
 
     if event.transaction_hash:
-        explorer_url = f"https://basescan.org/tx/{event.transaction_hash}"
+        explorer_url = _get_explorer_url(event.chain, event.transaction_hash)
         embed.add_field(
             name="Transaction",
             value=f"[View on Explorer]({explorer_url})",

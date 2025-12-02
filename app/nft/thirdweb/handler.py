@@ -49,10 +49,18 @@ class ThirdwebEventHandler:
         self.company_wallets = [w.lower() for w in (company_wallets or [])]
         self._magic_eden_client: MagicEdenClient | None = None
 
-    async def _get_magic_eden_client(self) -> MagicEdenClient:
-        """Get or create Magic Eden client for fetching token metadata."""
+    async def _get_magic_eden_client(self) -> MagicEdenClient | None:
+        """Get or create Magic Eden client for fetching token metadata.
+
+        Returns:
+            MagicEdenClient instance or None if initialization fails
+        """
         if self._magic_eden_client is None:
-            self._magic_eden_client = MagicEdenClient()
+            try:
+                self._magic_eden_client = MagicEdenClient()
+            except Exception as e:
+                logger.error("handler.magic_eden_client.init_failed", error=str(e))
+                return None
         return self._magic_eden_client
 
     async def _fetch_token_image(
@@ -73,6 +81,8 @@ class ThirdwebEventHandler:
         """
         try:
             client = await self._get_magic_eden_client()
+            if client is None:
+                return None
             metadata = await client.get_token_metadata(
                 contract_address=contract_address,
                 chain=chain,
@@ -93,7 +103,6 @@ class ThirdwebEventHandler:
         Args:
             payload: Webhook payload containing event data
         """
-        import json
         logger.info(
             "handler.event.received",
             payload_keys=list(payload.keys()),
@@ -112,8 +121,6 @@ class ThirdwebEventHandler:
 
     async def _process_single_event(self, event_wrapper: dict[str, Any]) -> None:
         """Process a single event from Thirdweb webhook."""
-        import json
-
         # The actual event data is nested
         event_data = event_wrapper.get("data", {})
         decoded = event_data.get("decoded", {})
@@ -136,6 +143,11 @@ class ThirdwebEventHandler:
         to_address = indexed_params.get("to", "").lower()
         token_id = str(indexed_params.get("tokenId", ""))
 
+        # Validate token_id is not empty
+        if not token_id or token_id == "None":
+            logger.warning("handler.invalid_token_id", token_id=token_id)
+            return
+
         # Extract chain and contract from event_data
         chain_id = event_data.get("chain_id") or event_data.get("chainId")
         contract_address = (event_data.get("address") or "").lower()
@@ -144,17 +156,21 @@ class ThirdwebEventHandler:
         block_timestamp = event_data.get("block_timestamp") or event_data.get("blockTimestamp")
 
         # Map chain ID to name
-        chain_id_map = {
+        chain_id_map: dict[str | int, str] = {
             "8453": "base",
             "84532": "base-sepolia",
             "1": "ethereum",
             "137": "polygon",
+            "42161": "arbitrum",
+            "10": "optimism",
             8453: "base",
             84532: "base-sepolia",
             1: "ethereum",
             137: "polygon",
+            42161: "arbitrum",
+            10: "optimism",
         }
-        chain = chain_id_map.get(chain_id, str(chain_id) if chain_id else "")
+        chain = chain_id_map.get(chain_id, str(chain_id) if chain_id else "base")
 
         logger.info(
             "handler.extracted_transfer",
@@ -241,6 +257,7 @@ class ThirdwebEventHandler:
                 transaction_hash=transaction_hash,
                 block_number=block_number,
                 timestamp=timestamp,
+                chain=chain,
                 price_native=price_native,
                 price_usd=price_usd,
                 token_image_url=token_image_url,
@@ -257,6 +274,7 @@ class ThirdwebEventHandler:
                 transaction_hash=transaction_hash,
                 block_number=block_number,
                 timestamp=timestamp,
+                chain=chain,
                 token_image_url=token_image_url,
                 discord_channel_id=collection.discord_channel_id,
             )
@@ -286,6 +304,7 @@ class ThirdwebEventHandler:
                 to_address=to_address,
                 transaction_hash=transaction_hash,
                 block_number=block_number,
+                chain=chain,
                 token_image_url=token_image_url,
                 timestamp=timestamp,
                 discord_channel_id=collection.discord_channel_id,
@@ -319,6 +338,7 @@ class ThirdwebEventHandler:
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        chain: str,
         price_native: Decimal | None,
         price_usd: Decimal | None,
         token_image_url: str | None,
@@ -334,6 +354,7 @@ class ThirdwebEventHandler:
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            chain: Blockchain network
             price_native: Mint price in ETH
             price_usd: Mint price in USD
             token_image_url: Token image URL
@@ -346,6 +367,7 @@ class ThirdwebEventHandler:
             transaction_hash=transaction_hash,
             block_number=block_number,
             timestamp=timestamp,
+            chain=chain,
             price_native=price_native,
             price_usd=price_usd,
             token_image_url=token_image_url,
@@ -385,6 +407,7 @@ class ThirdwebEventHandler:
         to_address: str,
         transaction_hash: str,
         block_number: int,
+        chain: str,
         token_image_url: str | None,
         timestamp: datetime,
         discord_channel_id: int,
@@ -399,6 +422,7 @@ class ThirdwebEventHandler:
             to_address: Recipient address
             transaction_hash: Transaction hash
             block_number: Block number
+            chain: Blockchain network
             token_image_url: Token image URL
             timestamp: Event timestamp
             discord_channel_id: Discord channel for notifications
@@ -411,6 +435,7 @@ class ThirdwebEventHandler:
             transaction_hash=transaction_hash,
             block_number=block_number,
             timestamp=timestamp,
+            chain=chain,
             token_image_url=token_image_url,
         )
 
@@ -449,6 +474,7 @@ class ThirdwebEventHandler:
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        chain: str,
         token_image_url: str | None,
         discord_channel_id: int,
     ) -> None:
@@ -462,6 +488,7 @@ class ThirdwebEventHandler:
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            chain: Blockchain network
             token_image_url: Token image URL
             discord_channel_id: Discord channel for notifications
         """
@@ -472,6 +499,7 @@ class ThirdwebEventHandler:
             transaction_hash=transaction_hash,
             block_number=block_number,
             timestamp=timestamp,
+            chain=chain,
             token_image_url=token_image_url,
         )
 
