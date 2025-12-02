@@ -46,6 +46,26 @@ def _get_explorer_url(chain: str, tx_hash: str) -> str:
     return f"{base_url}/tx/{tx_hash}"
 
 
+# Marketplace display name mapping
+MARKETPLACE_DISPLAY_NAMES: dict[str, str] = {
+    "magic_eden": "Magic Eden",
+    "opensea": "OpenSea",
+    "blur": "Blur",
+}
+
+
+def _format_marketplace(marketplace: str) -> str:
+    """Format marketplace identifier for display.
+
+    Args:
+        marketplace: Internal marketplace identifier (e.g., 'magic_eden')
+
+    Returns:
+        Human-readable marketplace name (e.g., 'Magic Eden')
+    """
+    return MARKETPLACE_DISPLAY_NAMES.get(marketplace, marketplace.replace("_", " ").title())
+
+
 def _format_eth_price(price: Decimal | None, price_usd: Decimal | None = None) -> str:
     """Format ETH price with optional USD value.
 
@@ -258,13 +278,13 @@ def create_listing_embed(event: NFTListingEvent, collection_name: str) -> discor
         )
         embed.add_field(
             name="Preferred Marketplace",
-            value=event.marketplace,
+            value=_format_marketplace(event.marketplace),
             inline=True,
         )
     else:
         embed.add_field(
             name="Preferred Marketplace",
-            value=event.marketplace,
+            value=_format_marketplace(event.marketplace),
             inline=False,  # Full width when alone
         )
 

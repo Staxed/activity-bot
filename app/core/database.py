@@ -2345,9 +2345,9 @@ class DatabaseClient:
 
         query = """
             INSERT INTO nft_mints (
-                collection_id, token_id, to_address, token_image_url,
+                collection_id, token_id, to_address, chain, token_image_url,
                 price_native, price_usd, transaction_hash, block_number, event_timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
             RETURNING id
         """
@@ -2359,6 +2359,7 @@ class DatabaseClient:
                     event.collection_id,
                     event.token_id,
                     event.to_address,
+                    event.chain,
                     event.token_image_url,
                     event.price_native,
                     event.price_usd,
@@ -2388,9 +2389,9 @@ class DatabaseClient:
 
         query = """
             INSERT INTO nft_transfers (
-                collection_id, token_id, from_address, to_address, token_image_url,
+                collection_id, token_id, from_address, to_address, chain, token_image_url,
                 transaction_hash, block_number, event_timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
             RETURNING id
         """
@@ -2403,6 +2404,7 @@ class DatabaseClient:
                     event.token_id,
                     event.from_address,
                     event.to_address,
+                    event.chain,
                     event.token_image_url,
                     event.transaction_hash,
                     event.block_number,
@@ -2430,9 +2432,9 @@ class DatabaseClient:
 
         query = """
             INSERT INTO nft_burns (
-                collection_id, token_id, from_address, token_image_url,
+                collection_id, token_id, from_address, chain, token_image_url,
                 transaction_hash, block_number, event_timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (collection_id, token_id, transaction_hash) DO NOTHING
             RETURNING id
         """
@@ -2444,6 +2446,7 @@ class DatabaseClient:
                     event.collection_id,
                     event.token_id,
                     event.from_address,
+                    event.chain,
                     event.token_image_url,
                     event.transaction_hash,
                     event.block_number,
@@ -2850,7 +2853,7 @@ class DatabaseClient:
         from app.nft.models import NFTMintEvent
 
         query = """
-            SELECT m.*, c.name as collection_name, c.discord_channel_id
+            SELECT m.*, c.name as collection_name, c.discord_channel_id, c.chain
             FROM nft_mints m
             JOIN nft_collections c ON m.collection_id = c.id
             WHERE m.posted_to_discord = FALSE
@@ -2868,6 +2871,8 @@ class DatabaseClient:
                         collection_id=row["collection_id"],
                         token_id=row["token_id"],
                         to_address=row["to_address"],
+                        chain=row["chain"],
+                        token_image_url=row.get("token_image_url"),
                         price_native=row["price_native"],
                         price_usd=row["price_usd"],
                         transaction_hash=row["transaction_hash"],
@@ -2907,7 +2912,7 @@ class DatabaseClient:
         from app.nft.models import NFTTransferEvent
 
         query = """
-            SELECT t.*, c.name as collection_name, c.discord_channel_id
+            SELECT t.*, c.name as collection_name, c.discord_channel_id, c.chain
             FROM nft_transfers t
             JOIN nft_collections c ON t.collection_id = c.id
             WHERE t.posted_to_discord = FALSE
@@ -2926,6 +2931,8 @@ class DatabaseClient:
                         token_id=row["token_id"],
                         from_address=row["from_address"],
                         to_address=row["to_address"],
+                        chain=row["chain"],
+                        token_image_url=row.get("token_image_url"),
                         transaction_hash=row["transaction_hash"],
                         block_number=row["block_number"],
                         event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),
@@ -2963,7 +2970,7 @@ class DatabaseClient:
         from app.nft.models import NFTBurnEvent
 
         query = """
-            SELECT b.*, c.name as collection_name, c.discord_channel_id
+            SELECT b.*, c.name as collection_name, c.discord_channel_id, c.chain
             FROM nft_burns b
             JOIN nft_collections c ON b.collection_id = c.id
             WHERE b.posted_to_discord = FALSE
@@ -2981,6 +2988,8 @@ class DatabaseClient:
                         collection_id=row["collection_id"],
                         token_id=row["token_id"],
                         from_address=row["from_address"],
+                        chain=row["chain"],
+                        token_image_url=row.get("token_image_url"),
                         transaction_hash=row["transaction_hash"],
                         block_number=row["block_number"],
                         event_timestamp=row["event_timestamp"].replace(tzinfo=UTC),

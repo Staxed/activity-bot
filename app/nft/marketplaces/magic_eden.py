@@ -203,8 +203,8 @@ class MagicEdenClient(MarketplaceClient):
                     price_native = Decimal(str(amount_data)) if amount_data else Decimal(0)
                     price_usd = None
 
-                # Always show Magic Eden as the preferred marketplace for listings
-                marketplace = "Magic Eden"
+                # Use consistent internal identifier for marketplace
+                marketplace = "magic_eden"
 
                 listing = NFTListingEvent(
                     collection_id=collection_db_id,
@@ -318,8 +318,8 @@ class MagicEdenClient(MarketplaceClient):
                 rarity_list = asset.get("rarity", [])
                 rarity_rank = rarity_list[0].get("rank") if rarity_list else None
 
-                # Always show Magic Eden as the preferred marketplace for sales
-                marketplace = "Magic Eden"
+                # Use consistent internal identifier for marketplace
+                marketplace = "magic_eden"
 
                 sale_event = NFTSaleEvent(
                     collection_id=collection_db_id,
