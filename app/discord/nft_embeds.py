@@ -305,13 +305,13 @@ def create_listing_embed(
             inline=False,  # Force new row
         )
         embed.add_field(
-            name="Marketplace",
+            name="Preferred Marketplace",
             value=marketplace_value,
             inline=True,
         )
     else:
         embed.add_field(
-            name="Marketplace",
+            name="Preferred Marketplace",
             value=marketplace_value,
             inline=False,  # Full width when alone
         )
