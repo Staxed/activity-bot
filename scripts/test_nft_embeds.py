@@ -46,6 +46,10 @@ SAMPLE_TX_HASH = "0xabc123def456789abc123def456789abc123def456789abc123def456789
 # Collection name for display
 COLLECTION_NAME = "DragonZ Series 1"
 
+# Test chain and contract for Magic Eden links
+TEST_CHAIN = "base"
+TEST_CONTRACT = "0x1234567890abcdef1234567890abcdef12345678"
+
 
 def create_sample_mint_event() -> NFTMintEvent:
     """Create a sample mint event for testing."""
@@ -125,7 +129,7 @@ def create_sample_sale_event(with_rarity: bool = False) -> NFTSaleEvent:
         price_usd=Decimal("625.00"),
         floor_price_native=Decimal("0.10"),
         rarity_rank=15 if with_rarity else None,
-        sale_id="sale-789012",
+        sale_id=SAMPLE_TX_HASH,
         event_timestamp=datetime.now(UTC),
     )
 
@@ -183,25 +187,29 @@ async def main() -> None:
             # 4. Listing embed without rarity
             print("Posting listing embed (no rarity)...")
             listing_event = create_sample_listing_event(with_rarity=False)
-            listing_embed = create_listing_embed(listing_event, COLLECTION_NAME)
+            listing_embed = create_listing_embed(
+                listing_event, COLLECTION_NAME, chain=TEST_CHAIN, contract_address=TEST_CONTRACT
+            )
             await channel.send(content="**4. Listing Event** (without rarity)", embed=listing_embed)
 
             # 5. Listing embed with rarity
             print("Posting listing embed (with rarity)...")
             listing_event_rarity = create_sample_listing_event(with_rarity=True)
-            listing_embed_rarity = create_listing_embed(listing_event_rarity, COLLECTION_NAME)
+            listing_embed_rarity = create_listing_embed(
+                listing_event_rarity, COLLECTION_NAME, chain=TEST_CHAIN, contract_address=TEST_CONTRACT
+            )
             await channel.send(content="**5. Listing Event** (with rarity)", embed=listing_embed_rarity)
 
             # 6. Sale embed without rarity
             print("Posting sale embed (no rarity)...")
             sale_event = create_sample_sale_event(with_rarity=False)
-            sale_embed = create_sale_embed(sale_event, COLLECTION_NAME)
+            sale_embed = create_sale_embed(sale_event, COLLECTION_NAME, chain=TEST_CHAIN)
             await channel.send(content="**6. Sale Event** (without rarity)", embed=sale_embed)
 
             # 7. Sale embed with rarity
             print("Posting sale embed (with rarity)...")
             sale_event_rarity = create_sample_sale_event(with_rarity=True)
-            sale_embed_rarity = create_sale_embed(sale_event_rarity, COLLECTION_NAME)
+            sale_embed_rarity = create_sale_embed(sale_event_rarity, COLLECTION_NAME, chain=TEST_CHAIN)
             await channel.send(content="**7. Sale Event** (with rarity)", embed=sale_embed_rarity)
 
             # Post footer message

@@ -108,7 +108,7 @@ class TestBurnEmbed:
         assert embed.color.value == BURN_COLOR
 
         field_names = [f.name for f in embed.fields]
-        assert "Burned by" in field_names
+        assert "Burned By" in field_names
 
 
 class TestListingEmbed:
@@ -136,23 +136,26 @@ class TestListingEmbed:
         assert "Price" in field_names
         assert "Marketplace" in field_names
 
-    def test_create_listing_embed_with_floor(self) -> None:
-        """Test listing embed includes floor comparison."""
+    def test_create_listing_embed_with_magic_eden_link(self) -> None:
+        """Test listing embed includes Magic Eden link when chain/contract provided."""
         event = NFTListingEvent(
             collection_id=1,
             token_id="42",
             seller_address="0xabcdef1234567890abcdef1234567890abcdef12",
-            marketplace="opensea",
+            marketplace="magic_eden",
             price_native=Decimal("0.5"),
-            floor_price_native=Decimal("0.25"),
             listing_id="list_123",
             event_timestamp=datetime.now(UTC),
         )
 
-        embed = create_listing_embed(event, "Test Collection")
+        embed = create_listing_embed(
+            event, "Test Collection", chain="base", contract_address="0x1234"
+        )
 
-        field_names = [f.name for f in embed.fields]
-        assert "Floor" in field_names
+        # Check that marketplace field has a link
+        marketplace_field = next(f for f in embed.fields if f.name == "Marketplace")
+        assert "View on Magic Eden" in marketplace_field.value
+        assert "magiceden.io" in marketplace_field.value
 
     def test_create_listing_embed_with_rarity(self) -> None:
         """Test listing embed includes rarity when available."""
@@ -202,11 +205,11 @@ class TestSaleEmbed:
             buyer_address="0x1234567890abcdef1234567890abcdef12345678",
             marketplace="magic_eden",
             price_native=Decimal("0.5"),
-            sale_id="sale_123",
+            sale_id="0xabc123",
             event_timestamp=datetime.now(UTC),
         )
 
-        embed = create_sale_embed(event, "Test Collection")
+        embed = create_sale_embed(event, "Test Collection", chain="base")
 
         assert "Sold" in embed.title
         assert embed.color.value == SALE_COLOR
@@ -215,7 +218,7 @@ class TestSaleEmbed:
         assert "Seller" in field_names
         assert "Buyer" in field_names
         assert "Price" in field_names
-        assert "Marketplace" in field_names
+        assert "Transaction" in field_names
 
 
 class TestDelistingEmbed:
@@ -241,4 +244,4 @@ class TestDelistingEmbed:
         field_names = [f.name for f in embed.fields]
         assert "Seller" in field_names
         assert "Was Listed" in field_names
-        assert "Marketplace" in field_names
+        assert "Preferred Marketplace" in field_names
