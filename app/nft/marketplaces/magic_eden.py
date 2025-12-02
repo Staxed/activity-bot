@@ -364,7 +364,7 @@ class MagicEdenClient(MarketplaceClient):
         chain_lower = self._validate_chain(chain)
 
         # Use the tokens endpoint to get metadata
-        endpoint = f"/tokens/{chain_lower}/{contract_address.lower()}:{token_id}"
+        endpoint = f"/tokens/{chain_lower}/{contract_address.lower()}/{token_id}"
 
         try:
             data = await self._request(endpoint)

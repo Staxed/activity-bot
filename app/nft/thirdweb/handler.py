@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.nft.config import get_collections_config
-from app.nft.marketplaces.magic_eden import MagicEdenClient
+from app.nft.metadata import fetch_token_image
 from app.nft.models import ZERO_ADDRESS, NFTBurnEvent, NFTMintEvent, NFTTransferEvent
 
 if TYPE_CHECKING:
@@ -47,55 +47,6 @@ class ThirdwebEventHandler:
         self.db = db
         self.poster = poster
         self.company_wallets = [w.lower() for w in (company_wallets or [])]
-        self._magic_eden_client: MagicEdenClient | None = None
-
-    async def _get_magic_eden_client(self) -> MagicEdenClient | None:
-        """Get or create Magic Eden client for fetching token metadata.
-
-        Returns:
-            MagicEdenClient instance or None if initialization fails
-        """
-        if self._magic_eden_client is None:
-            try:
-                self._magic_eden_client = MagicEdenClient()
-            except Exception as e:
-                logger.error("handler.magic_eden_client.init_failed", error=str(e))
-                return None
-        return self._magic_eden_client
-
-    async def _fetch_token_image(
-        self,
-        contract_address: str,
-        chain: str,
-        token_id: str,
-    ) -> str | None:
-        """Fetch token image URL from Magic Eden.
-
-        Args:
-            contract_address: NFT contract address
-            chain: Blockchain network
-            token_id: Token ID
-
-        Returns:
-            Image URL or None if not found
-        """
-        try:
-            client = await self._get_magic_eden_client()
-            if client is None:
-                return None
-            metadata = await client.get_token_metadata(
-                contract_address=contract_address,
-                chain=chain,
-                token_id=token_id,
-            )
-            return metadata.get("token_image_url")
-        except Exception as e:
-            logger.debug(
-                "handler.fetch_image.failed",
-                token_id=token_id,
-                error=str(e),
-            )
-            return None
 
     async def handle_event(self, payload: dict[str, Any]) -> None:
         """Handle incoming Thirdweb webhook event.
@@ -239,11 +190,11 @@ class ThirdwebEventHandler:
             is_burn=(to_address == ZERO_ADDRESS),
         )
 
-        # Fetch token image for the embed
-        token_image_url = await self._fetch_token_image(
+        # Fetch token image from on-chain metadata via IPFS
+        token_image_url = await fetch_token_image(
             contract_address=contract_address,
-            chain=chain,
             token_id=token_id,
+            chain=chain,
         )
 
         if from_address == ZERO_ADDRESS:

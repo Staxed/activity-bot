@@ -8,6 +8,7 @@ from app.core.logging import get_logger
 from app.nft.config import NFTCollectionConfig, get_collections_config
 from app.nft.marketplaces.base import MarketplaceClient, MarketplaceError
 from app.nft.marketplaces.magic_eden import MagicEdenClient
+from app.nft.metadata import fetch_token_image
 
 if TYPE_CHECKING:
     from app.core.database import DatabaseClient
@@ -193,30 +194,31 @@ class MarketplacePollingService:
             collection_slug=collection.id,
         )
 
-        # Fetch token metadata for listings (images/names not included in asks API)
-        if isinstance(client, MagicEdenClient):
-            for i, listing in enumerate(listings):
-                if not listing.token_image_url:
-                    try:
-                        metadata = await client.get_token_metadata(
-                            contract_address=collection.contract_address,
-                            chain=collection.chain,
-                            token_id=listing.token_id,
-                        )
-                        # Update listing with metadata
-                        if metadata.get("token_image_url") or metadata.get("token_name"):
-                            listings[i] = listing.model_copy(
-                                update={
-                                    "token_image_url": metadata.get("token_image_url"),
-                                    "token_name": metadata.get("token_name") or listing.token_name,
-                                }
-                            )
-                    except Exception as e:
-                        logger.debug(
-                            "marketplace.listing.metadata_failed",
-                            token_id=listing.token_id,
-                            error=str(e),
-                        )
+        # Fetch token images from IPFS for listings without images
+        for i, listing in enumerate(listings):
+            if not listing.token_image_url:
+                image_url = await fetch_token_image(
+                    contract_address=collection.contract_address,
+                    token_id=listing.token_id,
+                    chain=collection.chain,
+                )
+                if image_url:
+                    listings[i] = listing.model_copy(
+                        update={"token_image_url": image_url}
+                    )
+
+        # Fetch token images from IPFS for sales without images
+        for i, sale in enumerate(sales):
+            if not sale.token_image_url:
+                image_url = await fetch_token_image(
+                    contract_address=collection.contract_address,
+                    token_id=sale.token_id,
+                    chain=collection.chain,
+                )
+                if image_url:
+                    sales[i] = sale.model_copy(
+                        update={"token_image_url": image_url}
+                    )
 
         # Insert listings to database
         for listing in listings:

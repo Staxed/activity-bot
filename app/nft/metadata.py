@@ -1,0 +1,117 @@
+"""NFT metadata fetching via IPFS."""
+
+import aiohttp
+
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# IPFS gateway for fetching metadata and images
+IPFS_GATEWAY = "https://aeonforge.mypinata.cloud/ipfs/"
+
+# Base RPC endpoint for contract calls
+BASE_RPC_URL = "https://mainnet.base.org"
+
+
+def convert_ipfs_url(url: str) -> str:
+    """Convert an IPFS URL to use the configured gateway.
+
+    Args:
+        url: URL that may start with ipfs://
+
+    Returns:
+        URL converted to use IPFS gateway, or original if not IPFS
+    """
+    if url and url.startswith("ipfs://"):
+        return url.replace("ipfs://", IPFS_GATEWAY)
+    return url
+
+
+async def fetch_token_image(
+    contract_address: str,
+    token_id: str,
+    chain: str = "base",
+) -> str | None:
+    """Fetch token image URL from on-chain metadata.
+
+    Calls the contract's tokenURI function, fetches the metadata JSON,
+    and extracts the image URL, converting IPFS URLs to use the gateway.
+
+    Args:
+        contract_address: NFT contract address
+        token_id: Token ID
+        chain: Blockchain network (currently only base supported)
+
+    Returns:
+        Image URL using IPFS gateway, or None if fetch fails
+    """
+    if chain != "base":
+        logger.debug("metadata.fetch.unsupported_chain", chain=chain)
+        return None
+
+    try:
+        # Encode tokenURI(uint256) call
+        # Function selector: 0xc87b56dd
+        token_id_int = int(token_id)
+        data = "0xc87b56dd" + hex(token_id_int)[2:].zfill(64)
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "eth_call",
+            "params": [{"to": contract_address, "data": data}, "latest"],
+            "id": 1,
+        }
+
+        async with aiohttp.ClientSession() as session:
+            # Call tokenURI on contract
+            async with session.post(BASE_RPC_URL, json=payload) as response:
+                result = await response.json()
+
+                if "result" not in result or result["result"] == "0x":
+                    logger.debug(
+                        "metadata.tokenuri.empty",
+                        contract=contract_address[:10],
+                        token_id=token_id,
+                    )
+                    return None
+
+                # Decode ABI-encoded string response
+                hex_data = result["result"]
+                if len(hex_data) <= 130:
+                    return None
+
+                # ABI encoded string: offset (32 bytes) + length (32 bytes) + data
+                length = int(hex_data[66:130], 16)
+                uri_hex = hex_data[130 : 130 + length * 2]
+                token_uri = bytes.fromhex(uri_hex).decode("utf-8")
+
+            # Convert IPFS URI to gateway URL
+            metadata_url = convert_ipfs_url(token_uri)
+
+            # Fetch metadata JSON
+            async with session.get(metadata_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status != 200:
+                    logger.debug(
+                        "metadata.fetch.failed",
+                        token_id=token_id,
+                        status=response.status,
+                    )
+                    return None
+
+                metadata = await response.json()
+
+            # Extract and convert image URL
+            image_url = metadata.get("image")
+            if image_url:
+                return convert_ipfs_url(image_url)
+
+            return None
+
+    except Exception as e:
+        logger.debug(
+            "metadata.fetch.error",
+            contract=contract_address[:10],
+            token_id=token_id,
+            error=str(e),
+        )
+        return None
