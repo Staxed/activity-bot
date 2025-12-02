@@ -93,6 +93,23 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: str = "development"
 
+    # NFT Tracking settings
+    nft_enabled: bool = False
+    nft_collections_config: str = "collections.json"
+    nft_marketplace_poll_interval_minutes: int = 2
+    # Company wallets - only transfers FROM these wallets will be posted
+    # Comma-separated list of wallet addresses (case-insensitive)
+    nft_company_wallets: str = ""
+
+    # Thirdweb Insight Webhooks
+    thirdweb_webhook_secret: str = ""
+    webhook_server_port: int = 8080
+    webhook_server_host: str = "0.0.0.0"
+
+    # Marketplace API Keys
+    opensea_api_key: str = ""
+    rarible_api_key: str = ""
+
     # Valid log levels
     VALID_LOG_LEVELS: ClassVar[set[str]] = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
@@ -297,6 +314,22 @@ class Settings(BaseSettings):
         if not self.discussion_actions:
             return []
         return [action.strip() for action in self.discussion_actions.split(",") if action.strip()]
+
+    @property
+    def nft_company_wallets_list(self) -> list[str]:
+        """Parse company wallets from comma-separated string.
+
+        Returns:
+            List of wallet addresses (lowercase) that are company wallets.
+            Only transfers FROM these wallets will be posted.
+        """
+        if not self.nft_company_wallets:
+            return []
+        return [
+            wallet.strip().lower()
+            for wallet in self.nft_company_wallets.split(",")
+            if wallet.strip()
+        ]
 
     def get_user_ignored_repos(self, username: str) -> list[str]:
         """Get list of ignored repositories for a specific user.

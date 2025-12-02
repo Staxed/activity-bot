@@ -40,6 +40,11 @@ discord_bot: DiscordBot | None = None
 discord_poster: DiscordPoster | None = None
 polling_service: GitHubPollingService | None = None
 
+# NFT tracking module-level variables
+nft_webhook_server: Any | None = None  # WebhookServer
+nft_marketplace_poller: Any | None = None  # MarketplacePollingService
+nft_poster: Any | None = None  # NFTPoster
+
 
 async def recover_unposted_events(
     db: DatabaseClient,
@@ -237,6 +242,128 @@ async def recover_unposted_events(
         logger.error("recovery.failed", error=str(e), exc_info=True)
 
 
+async def recover_unposted_nft_events(
+    db: DatabaseClient,
+    nft_poster: Any,  # NFTPoster type
+) -> None:
+    """Recover and post unposted NFT events from database on startup.
+
+    Args:
+        db: Database client
+        nft_poster: NFT poster for Discord notifications
+
+    Note:
+        Recovers all NFT event types within 12-hour window.
+        Errors are logged but don't fail startup.
+    """
+    try:
+        logger.info("nft.recovery.started", max_age_hours=12)
+
+        # Fetch all unposted NFT events from database in parallel
+        (
+            mints,
+            transfers,
+            burns,
+            listings,
+            sales,
+            delistings,
+        ) = await asyncio.gather(
+            db.get_unposted_nft_mints(max_age_hours=12),
+            db.get_unposted_nft_transfers(max_age_hours=12),
+            db.get_unposted_nft_burns(max_age_hours=12),
+            db.get_unposted_nft_listings(max_age_hours=12),
+            db.get_unposted_nft_sales(max_age_hours=12),
+            db.get_unposted_nft_delistings(max_age_hours=12),
+        )
+
+        total_events = (
+            len(mints) + len(transfers) + len(burns) + len(listings) + len(sales) + len(delistings)
+        )
+
+        if total_events == 0:
+            logger.info("nft.recovery.no_events")
+            return
+
+        logger.info(
+            "nft.recovery.posting_events",
+            total=total_events,
+            mints=len(mints),
+            transfers=len(transfers),
+            burns=len(burns),
+            listings=len(listings),
+            sales=len(sales),
+            delistings=len(delistings),
+        )
+
+        # Post mint events
+        for db_id, event, collection_name, channel_id in mints:
+            try:
+                await nft_poster.post_mint(event, collection_name, channel_id)
+                await db.mark_nft_mint_posted(
+                    event.collection_id, event.token_id, event.transaction_hash
+                )
+            except Exception as e:
+                logger.warning("nft.recovery.mint.failed", error=str(e), token_id=event.token_id)
+
+        # Post transfer events
+        for db_id, event, collection_name, channel_id in transfers:
+            try:
+                await nft_poster.post_transfer(event, collection_name, channel_id)
+                await db.mark_nft_transfer_posted(
+                    event.collection_id, event.token_id, event.transaction_hash
+                )
+            except Exception as e:
+                logger.warning(
+                    "nft.recovery.transfer.failed", error=str(e), token_id=event.token_id
+                )
+
+        # Post burn events
+        for db_id, event, collection_name, channel_id in burns:
+            try:
+                await nft_poster.post_burn(event, collection_name, channel_id)
+                await db.mark_nft_burn_posted(
+                    event.collection_id, event.token_id, event.transaction_hash
+                )
+            except Exception as e:
+                logger.warning("nft.recovery.burn.failed", error=str(e), token_id=event.token_id)
+
+        # Post listing events
+        for db_id, event, collection_name, channel_id in listings:
+            try:
+                await nft_poster.post_listing(event, collection_name, channel_id)
+                await db.mark_nft_listing_posted(
+                    event.collection_id, event.marketplace, event.listing_id
+                )
+            except Exception as e:
+                logger.warning("nft.recovery.listing.failed", error=str(e), token_id=event.token_id)
+
+        # Post sale events
+        for db_id, event, collection_name, channel_id in sales:
+            try:
+                await nft_poster.post_sale(event, collection_name, channel_id)
+                await db.mark_nft_sale_posted(event.collection_id, event.marketplace, event.sale_id)
+            except Exception as e:
+                logger.warning("nft.recovery.sale.failed", error=str(e), token_id=event.token_id)
+
+        # Post delisting events
+        for db_id, event, collection_name, channel_id in delistings:
+            try:
+                await nft_poster.post_delisting(event, collection_name, channel_id)
+                await db.mark_nft_delisting_posted(
+                    event.collection_id, event.marketplace, event.delisting_id
+                )
+            except Exception as e:
+                logger.warning(
+                    "nft.recovery.delisting.failed", error=str(e), token_id=event.token_id
+                )
+
+        logger.info("nft.recovery.completed", posted=total_events)
+
+    except Exception as e:
+        # Log error but don't fail startup
+        logger.error("nft.recovery.failed", error=str(e), exc_info=True)
+
+
 async def startup() -> None:
     """Initialize application on startup."""
     global \
@@ -247,7 +374,10 @@ async def startup() -> None:
         github_client, \
         discord_bot, \
         discord_poster, \
-        polling_service
+        polling_service, \
+        nft_webhook_server, \
+        nft_marketplace_poller, \
+        nft_poster
 
     settings = get_settings()
 
@@ -341,6 +471,68 @@ async def startup() -> None:
         set_summary_scheduler(summary_scheduler)
         logger.info("summary.scheduler.initialized")
 
+    # Initialize NFT tracking if enabled
+    if settings.nft_enabled:
+        from app.discord.nft_poster import NFTPoster
+        from app.nft.config import load_collections_config
+        from app.nft.marketplaces.poller import MarketplacePollingService
+        from app.nft.thirdweb.handler import ThirdwebEventHandler
+        from app.nft.webhook_server import WebhookServer
+
+        # Load NFT collections config
+        nft_config = load_collections_config(settings.nft_collections_config)
+        logger.info(
+            "nft.config.loaded",
+            total=len(nft_config.collections),
+            active=len(nft_config.active_collections),
+        )
+
+        # Sync collections to database
+        for collection in nft_config.collections:
+            await database_client.sync_nft_collection(
+                collection_id=collection.id,
+                name=collection.name,
+                chain=collection.chain,
+                contract_address=collection.contract_address,
+                discord_channel_id=collection.discord_channel_id,
+                is_active=collection.is_active,
+            )
+
+        # Create NFT poster
+        nft_poster = NFTPoster(discord_bot)
+
+        # Recover unposted NFT events before starting services
+        await recover_unposted_nft_events(database_client, nft_poster)
+
+        # Start webhook server for Thirdweb events (if webhook secret configured)
+        if settings.thirdweb_webhook_secret:
+            event_handler = ThirdwebEventHandler(
+                db=database_client,
+                poster=nft_poster,
+                company_wallets=settings.nft_company_wallets_list,
+            )
+            nft_webhook_server = WebhookServer(
+                host=settings.webhook_server_host,
+                port=settings.webhook_server_port,
+                webhook_secret=settings.thirdweb_webhook_secret,
+                event_handler=event_handler,
+            )
+            await nft_webhook_server.start()
+            logger.info(
+                "nft.webhook_server.started",
+                host=settings.webhook_server_host,
+                port=settings.webhook_server_port,
+            )
+
+        # Start marketplace polling service (Magic Eden aggregates all marketplaces)
+        nft_marketplace_poller = MarketplacePollingService(
+            db=database_client,
+            poster=nft_poster,
+            poll_interval_minutes=settings.nft_marketplace_poll_interval_minutes,
+        )
+        await nft_marketplace_poller.start()
+        logger.info("nft.marketplace_poller.started")
+
     logger.info("application.initialization.completed")
 
 
@@ -353,9 +545,19 @@ async def shutdown() -> None:
         summary_scheduler, \
         github_client, \
         discord_bot, \
-        polling_service
+        polling_service, \
+        nft_webhook_server, \
+        nft_marketplace_poller
 
     logger.info("application.shutdown.started")
+
+    # Stop NFT marketplace poller
+    if nft_marketplace_poller:
+        await nft_marketplace_poller.stop()
+
+    # Stop NFT webhook server
+    if nft_webhook_server:
+        await nft_webhook_server.stop()
 
     # Stop polling service
     if polling_service:
