@@ -506,7 +506,11 @@ async def startup() -> None:
 
         # Start webhook server for Thirdweb events (if webhook secret configured)
         if settings.thirdweb_webhook_secret:
-            event_handler = ThirdwebEventHandler(db=database_client, poster=nft_poster)
+            event_handler = ThirdwebEventHandler(
+                db=database_client,
+                poster=nft_poster,
+                company_wallets=settings.nft_company_wallets_list,
+            )
             nft_webhook_server = WebhookServer(
                 host=settings.webhook_server_host,
                 port=settings.webhook_server_port,
@@ -520,13 +524,11 @@ async def startup() -> None:
                 port=settings.webhook_server_port,
             )
 
-        # Start marketplace polling service
+        # Start marketplace polling service (Magic Eden aggregates all marketplaces)
         nft_marketplace_poller = MarketplacePollingService(
             db=database_client,
             poster=nft_poster,
             poll_interval_minutes=settings.nft_marketplace_poll_interval_minutes,
-            opensea_api_key=settings.opensea_api_key or None,
-            rarible_api_key=settings.rarible_api_key or None,
         )
         await nft_marketplace_poller.start()
         logger.info("nft.marketplace_poller.started")

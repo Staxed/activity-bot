@@ -12,18 +12,29 @@ from app.nft.models import NFTDelistingEvent, NFTListingEvent, NFTSaleEvent
 
 logger = get_logger(__name__)
 
-# Magic Eden API base URLs by chain
-BASE_URLS = {
-    "base": "https://api-mainnet.magiceden.dev/v3/rtp/base",
-    "ethereum": "https://api-mainnet.magiceden.dev/v3/rtp/ethereum",
-    "polygon": "https://api-mainnet.magiceden.dev/v3/rtp/polygon",
+# Magic Eden v4 EVM API
+BASE_URL = "https://api-mainnet.magiceden.dev/v4/evm-public"
+
+# Supported chains in v4 API
+SUPPORTED_CHAINS = {
+    "base",
+    "ethereum",
+    "abstract",
+    "apechain",
+    "arbitrum",
+    "berachain",
+    "bsc",
+    "polygon",
+    "sei",
+    "avalanche",
+    "monad",
 }
 
 
 class MagicEdenClient(MarketplaceClient):
     """Magic Eden API client.
 
-    Fetches listing and sale data from Magic Eden's Reservoir-based API.
+    Fetches listing and sale data from Magic Eden's v4 EVM API.
     """
 
     def __init__(self, api_key: str | None = None) -> None:
@@ -48,40 +59,38 @@ class MagicEdenClient(MarketplaceClient):
         """
         if self.session is None or self.session.closed:
             headers = {
-                "Accept": "application/json",
+                "Accept": "*/*",
             }
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
             self.session = aiohttp.ClientSession(headers=headers)
         return self.session
 
-    def _get_base_url(self, chain: str) -> str:
-        """Get base URL for chain.
+    def _validate_chain(self, chain: str) -> str:
+        """Validate chain is supported.
 
         Args:
             chain: Blockchain network
 
         Returns:
-            Base URL for the chain
+            Lowercase chain name
 
         Raises:
             ValueError: If chain is not supported
         """
         chain_lower = chain.lower()
-        if chain_lower not in BASE_URLS:
+        if chain_lower not in SUPPORTED_CHAINS:
             raise ValueError(f"Chain {chain} not supported by Magic Eden")
-        return BASE_URLS[chain_lower]
+        return chain_lower
 
     async def _request(
         self,
-        chain: str,
         endpoint: str,
         params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[Any]:
         """Make API request.
 
         Args:
-            chain: Blockchain network
             endpoint: API endpoint path
             params: Query parameters
 
@@ -93,8 +102,7 @@ class MagicEdenClient(MarketplaceClient):
             APIError: If API returns error
         """
         session = await self._ensure_session()
-        base_url = self._get_base_url(chain)
-        url = f"{base_url}{endpoint}"
+        url = f"{BASE_URL}{endpoint}"
 
         try:
             async with session.get(url, params=params) as response:
@@ -106,7 +114,7 @@ class MagicEdenClient(MarketplaceClient):
                     text = await response.text()
                     raise APIError(response.status, text[:200])
 
-                return await response.json()  # type: ignore[no-any-return]
+                return await response.json()
 
         except aiohttp.ClientError as e:
             logger.error("magiceden.request.failed", url=url, error=str(e))
@@ -118,6 +126,7 @@ class MagicEdenClient(MarketplaceClient):
         chain: str,
         since: datetime | None = None,
         collection_db_id: int | None = None,
+        collection_slug: str | None = None,
     ) -> list[NFTListingEvent]:
         """Fetch active listings for a collection.
 
@@ -126,6 +135,7 @@ class MagicEdenClient(MarketplaceClient):
             chain: Blockchain network
             since: Only fetch listings after this timestamp
             collection_db_id: Database ID of the collection
+            collection_slug: Collection slug (not used by Magic Eden, uses contract address)
 
         Returns:
             List of NFTListingEvent objects
@@ -134,38 +144,38 @@ class MagicEdenClient(MarketplaceClient):
             logger.warning("magiceden.listings.no_collection_id")
             return []
 
-        # Get floor price first
-        floor_price = await self.get_floor_price(contract_address, chain)
+        chain_lower = self._validate_chain(chain)
 
         params: dict[str, Any] = {
-            "collection": contract_address.lower(),
+            "chain": chain_lower,
+            "collectionId": contract_address.lower(),
             "sortBy": "createdAt",
-            "sortDirection": "desc",
+            "sortDir": "desc",
             "limit": 50,
+            "status[]": "active",
         }
 
-        if since:
-            # Magic Eden uses Unix timestamp
-            params["startTimestamp"] = int(since.timestamp())
-
         try:
-            data = await self._request(chain, "/orders/asks/v5", params)
+            data = await self._request("/orders/asks", params)
         except (RateLimitError, APIError) as e:
             logger.error("magiceden.listings.failed", error=str(e))
             return []
 
-        orders = data.get("orders", [])
+        # Response has an "asks" key in v4 API
+        orders = data if isinstance(data, list) else data.get("asks", [])
         listings: list[NFTListingEvent] = []
 
         for order in orders:
             try:
-                # Extract token info
-                criteria = order.get("criteria", {}).get("data", {})
-                token_info = criteria.get("token", {})
+                # Extract token ID from assetId (format: "contract:tokenId")
+                asset_id = order.get("assetId", "")
+                token_id = asset_id.split(":")[-1] if ":" in asset_id else ""
 
-                # Parse timestamp
+                # Parse timestamp (ISO format string)
                 created_at = order.get("createdAt")
-                if created_at:
+                if isinstance(created_at, int):
+                    timestamp = datetime.fromtimestamp(created_at, tz=UTC)
+                elif isinstance(created_at, str):
                     timestamp = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                 else:
                     timestamp = datetime.now(UTC)
@@ -174,25 +184,40 @@ class MagicEdenClient(MarketplaceClient):
                 if since and timestamp < since:
                     continue
 
-                # Parse price (in native currency)
-                price_native = Decimal(
-                    str(order.get("price", {}).get("amount", {}).get("decimal", 0))
-                )
-                price_usd_str = order.get("price", {}).get("amount", {}).get("usd")
-                price_usd = Decimal(str(price_usd_str)) if price_usd_str else None
+                # Parse price from nested structure: price.amount.native
+                price_data = order.get("price", {})
+                amount_data = price_data.get("amount", {}) if isinstance(price_data, dict) else {}
+
+                if isinstance(amount_data, dict):
+                    # v4 API: price.amount.native is the decimal string
+                    native_price = amount_data.get("native", "0")
+                    price_native = Decimal(str(native_price))
+
+                    # USD price is in price.amount.fiat.usd
+                    fiat_data = amount_data.get("fiat", {})
+                    if isinstance(fiat_data, dict) and fiat_data.get("usd"):
+                        price_usd = Decimal(str(fiat_data["usd"]))
+                    else:
+                        price_usd = None
+                else:
+                    price_native = Decimal(str(amount_data)) if amount_data else Decimal(0)
+                    price_usd = None
+
+                # Always show Magic Eden as the preferred marketplace for listings
+                marketplace = "Magic Eden"
 
                 listing = NFTListingEvent(
                     collection_id=collection_db_id,
-                    token_id=str(token_info.get("tokenId", criteria.get("tokenId", ""))),
-                    token_name=token_info.get("name"),
-                    token_image_url=token_info.get("image"),
+                    token_id=token_id,
+                    token_name=None,  # v4 API doesn't include token name in asks
+                    token_image_url=None,  # v4 API doesn't include image in asks
                     seller_address=order.get("maker", ""),
-                    marketplace="magic_eden",
+                    marketplace=marketplace,
                     price_native=price_native,
                     price_usd=price_usd,
-                    floor_price_native=floor_price,
-                    rarity_rank=token_info.get("rarityRank"),
-                    listing_id=order.get("id", ""),
+                    floor_price_native=None,  # Will fetch separately if needed
+                    rarity_rank=None,  # v4 API doesn't include rarity in asks
+                    listing_id=str(order.get("id", "")),
                     event_timestamp=timestamp,
                     is_active=order.get("status") == "active",
                 )
@@ -213,6 +238,7 @@ class MagicEdenClient(MarketplaceClient):
         chain: str,
         since: datetime | None = None,
         collection_db_id: int | None = None,
+        collection_slug: str | None = None,
     ) -> list[NFTSaleEvent]:
         """Fetch sales for a collection.
 
@@ -221,6 +247,7 @@ class MagicEdenClient(MarketplaceClient):
             chain: Blockchain network
             since: Only fetch sales after this timestamp
             collection_db_id: Database ID of the collection
+            collection_slug: Collection slug (not used by Magic Eden, uses contract address)
 
         Returns:
             List of NFTSaleEvent objects
@@ -229,34 +256,36 @@ class MagicEdenClient(MarketplaceClient):
             logger.warning("magiceden.sales.no_collection_id")
             return []
 
-        # Get floor price
-        floor_price = await self.get_floor_price(contract_address, chain)
+        chain_lower = self._validate_chain(chain)
 
         params: dict[str, Any] = {
-            "collection": contract_address.lower(),
+            "chain": chain_lower,
+            "collectionId": contract_address.lower(),
+            "activityTypes[]": "TRADE",  # TRADE is the activity type for sales
             "limit": 50,
         }
-
-        if since:
-            params["startTimestamp"] = int(since.timestamp())
+        # Note: fromTime filtering done after fetch since API format is unclear
 
         try:
-            data = await self._request(chain, "/sales/v6", params)
+            data = await self._request("/activities", params)
         except (RateLimitError, APIError) as e:
             logger.error("magiceden.sales.failed", error=str(e))
             return []
 
-        sales_data = data.get("sales", [])
+        # Response has activities array
+        activities = data.get("activities", []) if isinstance(data, dict) else []
         sales: list[NFTSaleEvent] = []
 
-        for sale in sales_data:
+        for activity in activities:
             try:
-                # Parse timestamp
-                timestamp_val = sale.get("timestamp")
-                if isinstance(timestamp_val, int):
-                    timestamp = datetime.fromtimestamp(timestamp_val, tz=UTC)
-                elif isinstance(timestamp_val, str):
-                    timestamp = datetime.fromisoformat(timestamp_val.replace("Z", "+00:00"))
+                # Only process TRADE activities
+                if activity.get("activityType") != "TRADE":
+                    continue
+
+                # Parse timestamp (ISO format string)
+                timestamp_str = activity.get("timestamp")
+                if timestamp_str:
+                    timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                 else:
                     timestamp = datetime.now(UTC)
 
@@ -264,27 +293,47 @@ class MagicEdenClient(MarketplaceClient):
                 if since and timestamp < since:
                     continue
 
-                # Parse price
-                price_data = sale.get("price", {})
-                price_native = Decimal(str(price_data.get("amount", {}).get("decimal", 0)))
-                price_usd_str = price_data.get("amount", {}).get("usd")
-                price_usd = Decimal(str(price_usd_str)) if price_usd_str else None
+                # Parse price from unitPrice.amount.native (v4 API structure)
+                unit_price = activity.get("unitPrice", {})
+                amount_data = unit_price.get("amount", {}) if isinstance(unit_price, dict) else {}
 
-                token_info = sale.get("token", {})
+                if isinstance(amount_data, dict):
+                    price_native = Decimal(str(amount_data.get("native", "0")))
+                    # USD is in amount.fiat.usd
+                    fiat_data = amount_data.get("fiat", {})
+                    price_usd = Decimal(str(fiat_data["usd"])) if fiat_data.get("usd") else None
+                else:
+                    price_native = Decimal("0")
+                    price_usd = None
+
+                asset = activity.get("asset", {})
+                tx_info = activity.get("transactionInfo", {})
+
+                # Get image from mediaV2.main.uri
+                media_v2 = asset.get("mediaV2", {})
+                main_media = media_v2.get("main", {}) if isinstance(media_v2, dict) else {}
+                image_url = main_media.get("uri") if isinstance(main_media, dict) else None
+
+                # Get rarity from rarity[0].rank
+                rarity_list = asset.get("rarity", [])
+                rarity_rank = rarity_list[0].get("rank") if rarity_list else None
+
+                # Always show Magic Eden as the preferred marketplace for sales
+                marketplace = "Magic Eden"
 
                 sale_event = NFTSaleEvent(
                     collection_id=collection_db_id,
-                    token_id=str(token_info.get("tokenId", "")),
-                    token_name=token_info.get("name"),
-                    token_image_url=token_info.get("image"),
-                    seller_address=sale.get("from", ""),
-                    buyer_address=sale.get("to", ""),
-                    marketplace="magic_eden",
+                    token_id=str(asset.get("tokenId", "")),
+                    token_name=asset.get("name"),
+                    token_image_url=image_url,
+                    seller_address=activity.get("fromAddress", ""),
+                    buyer_address=activity.get("toAddress", ""),
+                    marketplace=marketplace,
                     price_native=price_native,
                     price_usd=price_usd,
-                    floor_price_native=floor_price,
-                    rarity_rank=token_info.get("rarityRank"),
-                    sale_id=sale.get("txHash", sale.get("id", "")),
+                    floor_price_native=None,
+                    rarity_rank=rarity_rank,
+                    sale_id=tx_info.get("transactionId", activity.get("activityId", "")),
                     event_timestamp=timestamp,
                 )
                 sales.append(sale_event)
@@ -296,6 +345,55 @@ class MagicEdenClient(MarketplaceClient):
         logger.info("magiceden.sales.fetched", count=len(sales), contract=contract_address[:10])
         return sales
 
+    async def get_token_metadata(
+        self,
+        contract_address: str,
+        chain: str,
+        token_id: str,
+    ) -> dict[str, Any]:
+        """Fetch metadata for a single token.
+
+        Args:
+            contract_address: NFT contract address
+            chain: Blockchain network
+            token_id: Token ID
+
+        Returns:
+            Dict with token_name and token_image_url (may be None)
+        """
+        chain_lower = self._validate_chain(chain)
+
+        # Use the tokens endpoint to get metadata
+        endpoint = f"/tokens/{chain_lower}/{contract_address.lower()}:{token_id}"
+
+        try:
+            data = await self._request(endpoint)
+        except (RateLimitError, APIError) as e:
+            logger.debug("magiceden.token_metadata.failed", token_id=token_id, error=str(e))
+            return {"token_name": None, "token_image_url": None}
+
+        if not data:
+            return {"token_name": None, "token_image_url": None}
+
+        # Token data structure
+        token = data if isinstance(data, dict) else {}
+
+        # Get name
+        token_name = token.get("name")
+
+        # Get image from mediaV2.main.uri or fallback to media
+        media_v2 = token.get("mediaV2", {})
+        main_media = media_v2.get("main", {}) if isinstance(media_v2, dict) else {}
+        image_url = main_media.get("uri") if isinstance(main_media, dict) else None
+
+        # Fallback to older media format
+        if not image_url:
+            media = token.get("media", {})
+            if isinstance(media, dict):
+                image_url = media.get("image") or media.get("uri")
+
+        return {"token_name": token_name, "token_image_url": image_url}
+
     async def get_floor_price(
         self,
         contract_address: str,
@@ -303,27 +401,46 @@ class MagicEdenClient(MarketplaceClient):
     ) -> Decimal | None:
         """Get current floor price for a collection.
 
+        Uses the asks endpoint sorted by price to get the lowest listing.
+
         Args:
             contract_address: NFT contract address
             chain: Blockchain network
 
         Returns:
-            Floor price in ETH, or None if unavailable
+            Floor price in native currency, or None if unavailable
         """
-        params = {"id": contract_address.lower()}
+        chain_lower = self._validate_chain(chain)
+
+        params: dict[str, Any] = {
+            "chain": chain_lower,
+            "collectionId": contract_address.lower(),
+            "sortBy": "price",
+            "sortDir": "asc",
+            "limit": 1,
+            "status[]": "active",
+        }
 
         try:
-            data = await self._request(chain, "/collections/v7", params)
+            data = await self._request("/orders/asks", params)
         except (RateLimitError, APIError) as e:
             logger.warning("magiceden.floor.failed", error=str(e))
             return None
 
-        collections = data.get("collections", [])
-        if not collections:
+        asks = data if isinstance(data, list) else data.get("asks", [])
+        if not asks:
             return None
 
-        floor_ask = collections[0].get("floorAsk", {})
-        price = floor_ask.get("price", {}).get("amount", {}).get("decimal")
+        # v4 API: price is nested as price.amount.native
+        price_data = asks[0].get("price", {})
+        if isinstance(price_data, dict):
+            amount_data = price_data.get("amount", {})
+            if isinstance(amount_data, dict):
+                price = amount_data.get("native")
+            else:
+                price = amount_data
+        else:
+            price = price_data
 
         if price is not None:
             return Decimal(str(price))
@@ -335,23 +452,22 @@ class MagicEdenClient(MarketplaceClient):
         chain: str,
         since: datetime | None = None,
         collection_db_id: int | None = None,
+        collection_slug: str | None = None,
     ) -> list[NFTDelistingEvent]:
         """Fetch cancelled listings.
 
-        Magic Eden API may not expose this directly - check for listings
-        that have become inactive.
+        Magic Eden v4 API doesn't have a direct delistings endpoint.
 
         Args:
             contract_address: NFT contract address
             chain: Blockchain network
             since: Only fetch delistings after this timestamp
             collection_db_id: Database ID of the collection
+            collection_slug: Collection slug (not used by Magic Eden)
 
         Returns:
-            List of NFTDelistingEvent objects
+            Empty list - delistings not supported via this API
         """
-        # Magic Eden doesn't have a direct delistings endpoint
-        # We would need to track listing state changes
         return []
 
     async def close(self) -> None:

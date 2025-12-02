@@ -8,8 +8,6 @@ from app.core.logging import get_logger
 from app.nft.config import NFTCollectionConfig, get_collections_config
 from app.nft.marketplaces.base import MarketplaceClient, MarketplaceError
 from app.nft.marketplaces.magic_eden import MagicEdenClient
-from app.nft.marketplaces.opensea import OpenSeaClient
-from app.nft.marketplaces.rarible import RaribleClient
 
 if TYPE_CHECKING:
     from app.core.database import DatabaseClient
@@ -21,9 +19,9 @@ logger = get_logger(__name__)
 class MarketplacePollingService:
     """Service for polling NFT marketplace APIs.
 
-    Polls Magic Eden, OpenSea, and Rarible APIs for new listings and sales
-    on configured collections. Uses database state to track last poll time
-    for each collection/marketplace pair.
+    Polls Magic Eden API for new listings and sales on configured collections.
+    Magic Eden aggregates data from multiple marketplaces (OpenSea, Blur, etc.)
+    Uses database state to track last poll time for each collection/marketplace pair.
 
     Attributes:
         poll_interval_minutes: How often to poll (default: 2 minutes)
@@ -34,8 +32,6 @@ class MarketplacePollingService:
         db: "DatabaseClient",
         poster: "NFTPoster | None" = None,
         poll_interval_minutes: int = 2,
-        opensea_api_key: str | None = None,
-        rarible_api_key: str | None = None,
     ) -> None:
         """Initialize polling service.
 
@@ -43,14 +39,10 @@ class MarketplacePollingService:
             db: Database client
             poster: Optional Discord poster for notifications
             poll_interval_minutes: How often to poll marketplaces
-            opensea_api_key: OpenSea API key (required for OpenSea)
-            rarible_api_key: Optional Rarible API key
         """
         self.db = db
         self.poster = poster
         self.poll_interval_minutes = poll_interval_minutes
-        self.opensea_api_key = opensea_api_key
-        self.rarible_api_key = rarible_api_key
 
         self._running = False
         self._poll_task: asyncio.Task[None] | None = None
@@ -92,17 +84,8 @@ class MarketplacePollingService:
 
     async def _init_clients(self) -> None:
         """Initialize marketplace clients."""
-        # Magic Eden doesn't require API key
+        # Magic Eden doesn't require API key and aggregates data from all marketplaces
         self._clients["magic_eden"] = MagicEdenClient()
-
-        # OpenSea requires API key
-        if self.opensea_api_key:
-            self._clients["opensea"] = OpenSeaClient(self.opensea_api_key)
-        else:
-            logger.warning("marketplace.opensea.no_api_key")
-
-        # Rarible works without key but has rate limits
-        self._clients["rarible"] = RaribleClient(self.rarible_api_key)
 
     async def _poll_loop(self) -> None:
         """Main polling loop."""
@@ -198,6 +181,7 @@ class MarketplacePollingService:
             chain=collection.chain,
             since=last_poll,
             collection_db_id=db_collection_id,
+            collection_slug=collection.id,
         )
 
         # Fetch new sales
@@ -206,15 +190,33 @@ class MarketplacePollingService:
             chain=collection.chain,
             since=last_poll,
             collection_db_id=db_collection_id,
+            collection_slug=collection.id,
         )
 
-        # Fetch delistings if supported
-        delistings = await client.get_delistings(
-            contract_address=collection.contract_address,
-            chain=collection.chain,
-            since=last_poll,
-            collection_db_id=db_collection_id,
-        )
+        # Fetch token metadata for listings (images/names not included in asks API)
+        if isinstance(client, MagicEdenClient):
+            for i, listing in enumerate(listings):
+                if not listing.token_image_url:
+                    try:
+                        metadata = await client.get_token_metadata(
+                            contract_address=collection.contract_address,
+                            chain=collection.chain,
+                            token_id=listing.token_id,
+                        )
+                        # Update listing with metadata
+                        if metadata.get("token_image_url") or metadata.get("token_name"):
+                            listings[i] = listing.model_copy(
+                                update={
+                                    "token_image_url": metadata.get("token_image_url"),
+                                    "token_name": metadata.get("token_name") or listing.token_name,
+                                }
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            "marketplace.listing.metadata_failed",
+                            token_id=listing.token_id,
+                            error=str(e),
+                        )
 
         # Insert listings to database
         for listing in listings:
@@ -244,20 +246,6 @@ class MarketplacePollingService:
             except Exception as e:
                 logger.warning("marketplace.sale.save_failed", error=str(e))
 
-        # Insert delistings to database
-        for delisting in delistings:
-            try:
-                inserted = await self.db.insert_nft_delisting(delisting)
-                if inserted and self.poster:
-                    await self.poster.post_delisting(
-                        delisting, collection.name, collection.discord_channel_id
-                    )
-                    await self.db.mark_nft_delisting_posted(
-                        db_collection_id, marketplace_name, delisting.delisting_id
-                    )
-            except Exception as e:
-                logger.warning("marketplace.delisting.save_failed", error=str(e))
-
         # Update poll state
         await self.db.set_nft_marketplace_state(db_collection_id, marketplace_name)
 
@@ -267,7 +255,6 @@ class MarketplacePollingService:
             marketplace=marketplace_name,
             listings=len(listings),
             sales=len(sales),
-            delistings=len(delistings),
         )
 
     async def poll_now(self) -> None:

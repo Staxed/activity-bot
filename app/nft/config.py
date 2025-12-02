@@ -35,7 +35,7 @@ class NFTCollectionConfig(BaseModel):
     track_onchain: bool = Field(True, description="Track on-chain events")
     track_marketplace: bool = Field(True, description="Track marketplace events")
     marketplaces: list[str] = Field(
-        default_factory=lambda: ["magic_eden", "opensea", "rarible"],
+        default_factory=lambda: ["magic_eden"],
         description="Marketplaces to track",
     )
     is_active: bool = Field(True, description="Whether collection is active")
@@ -95,7 +95,7 @@ class NFTCollectionConfig(BaseModel):
         Raises:
             ValueError: If any marketplace is not supported
         """
-        supported = {"magic_eden", "opensea", "rarible"}
+        supported = {"magic_eden"}
         v_lower = [m.lower() for m in v]
         invalid = set(v_lower) - supported
         if invalid:

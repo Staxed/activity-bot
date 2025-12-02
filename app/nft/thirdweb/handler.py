@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.nft.config import get_collections_config
+from app.nft.marketplaces.magic_eden import MagicEdenClient
 from app.nft.models import ZERO_ADDRESS, NFTBurnEvent, NFTMintEvent, NFTTransferEvent
 
 if TYPE_CHECKING:
@@ -21,26 +22,70 @@ class ThirdwebEventHandler:
     Processes ERC-721 Transfer events and categorizes them as:
     - Mint: from_address is zero address
     - Burn: to_address is zero address
-    - Transfer: all other transfers
+    - Transfer: all other transfers (only posted if from a company wallet)
 
     Attributes:
         db: Database client for storing events
         poster: Discord poster for notifications
+        company_wallets: List of company wallet addresses (lowercase)
     """
 
     def __init__(
         self,
         db: "DatabaseClient",
         poster: "NFTPoster | None" = None,
+        company_wallets: list[str] | None = None,
     ) -> None:
         """Initialize event handler.
 
         Args:
             db: Database client
             poster: Optional Discord poster for notifications
+            company_wallets: List of company wallet addresses - only transfers
+                           FROM these wallets will be posted to Discord
         """
         self.db = db
         self.poster = poster
+        self.company_wallets = [w.lower() for w in (company_wallets or [])]
+        self._magic_eden_client: MagicEdenClient | None = None
+
+    async def _get_magic_eden_client(self) -> MagicEdenClient:
+        """Get or create Magic Eden client for fetching token metadata."""
+        if self._magic_eden_client is None:
+            self._magic_eden_client = MagicEdenClient()
+        return self._magic_eden_client
+
+    async def _fetch_token_image(
+        self,
+        contract_address: str,
+        chain: str,
+        token_id: str,
+    ) -> str | None:
+        """Fetch token image URL from Magic Eden.
+
+        Args:
+            contract_address: NFT contract address
+            chain: Blockchain network
+            token_id: Token ID
+
+        Returns:
+            Image URL or None if not found
+        """
+        try:
+            client = await self._get_magic_eden_client()
+            metadata = await client.get_token_metadata(
+                contract_address=contract_address,
+                chain=chain,
+                token_id=token_id,
+            )
+            return metadata.get("token_image_url")
+        except Exception as e:
+            logger.debug(
+                "handler.fetch_image.failed",
+                token_id=token_id,
+                error=str(e),
+            )
+            return None
 
     async def handle_event(self, payload: dict[str, Any]) -> None:
         """Handle incoming Thirdweb webhook event.
@@ -178,6 +223,13 @@ class ThirdwebEventHandler:
             is_burn=(to_address == ZERO_ADDRESS),
         )
 
+        # Fetch token image for the embed
+        token_image_url = await self._fetch_token_image(
+            contract_address=contract_address,
+            chain=chain,
+            token_id=token_id,
+        )
+
         if from_address == ZERO_ADDRESS:
             # Mint event
             logger.info("handler.processing_mint", token_id=token_id)
@@ -191,6 +243,7 @@ class ThirdwebEventHandler:
                 timestamp=timestamp,
                 price_native=price_native,
                 price_usd=price_usd,
+                token_image_url=token_image_url,
                 discord_channel_id=collection.discord_channel_id,
             )
         elif to_address == ZERO_ADDRESS:
@@ -204,11 +257,27 @@ class ThirdwebEventHandler:
                 transaction_hash=transaction_hash,
                 block_number=block_number,
                 timestamp=timestamp,
+                token_image_url=token_image_url,
                 discord_channel_id=collection.discord_channel_id,
             )
         else:
-            # Transfer event
+            # Transfer event - only post if from a company wallet
             logger.info("handler.processing_transfer", token_id=token_id)
+
+            # Check if this transfer is from a company wallet
+            is_company_transfer = (
+                len(self.company_wallets) == 0  # No wallets configured = post all
+                or from_address in self.company_wallets
+            )
+
+            if not is_company_transfer:
+                logger.info(
+                    "handler.transfer.skipped_not_company_wallet",
+                    token_id=token_id,
+                    from_address=from_address[:10] + "...",
+                )
+                return
+
             await self._handle_transfer(
                 collection_id=db_collection_id,
                 collection_name=collection.name,
@@ -217,6 +286,7 @@ class ThirdwebEventHandler:
                 to_address=to_address,
                 transaction_hash=transaction_hash,
                 block_number=block_number,
+                token_image_url=token_image_url,
                 timestamp=timestamp,
                 discord_channel_id=collection.discord_channel_id,
             )
@@ -251,6 +321,7 @@ class ThirdwebEventHandler:
         timestamp: datetime,
         price_native: Decimal | None,
         price_usd: Decimal | None,
+        token_image_url: str | None,
         discord_channel_id: int,
     ) -> None:
         """Handle mint event.
@@ -265,6 +336,7 @@ class ThirdwebEventHandler:
             timestamp: Event timestamp
             price_native: Mint price in ETH
             price_usd: Mint price in USD
+            token_image_url: Token image URL
             discord_channel_id: Discord channel for notifications
         """
         event = NFTMintEvent.from_thirdweb_webhook(
@@ -276,6 +348,7 @@ class ThirdwebEventHandler:
             timestamp=timestamp,
             price_native=price_native,
             price_usd=price_usd,
+            token_image_url=token_image_url,
         )
 
         # Insert to database
@@ -312,6 +385,7 @@ class ThirdwebEventHandler:
         to_address: str,
         transaction_hash: str,
         block_number: int,
+        token_image_url: str | None,
         timestamp: datetime,
         discord_channel_id: int,
     ) -> None:
@@ -325,6 +399,7 @@ class ThirdwebEventHandler:
             to_address: Recipient address
             transaction_hash: Transaction hash
             block_number: Block number
+            token_image_url: Token image URL
             timestamp: Event timestamp
             discord_channel_id: Discord channel for notifications
         """
@@ -336,6 +411,7 @@ class ThirdwebEventHandler:
             transaction_hash=transaction_hash,
             block_number=block_number,
             timestamp=timestamp,
+            token_image_url=token_image_url,
         )
 
         # Insert to database
@@ -373,6 +449,7 @@ class ThirdwebEventHandler:
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        token_image_url: str | None,
         discord_channel_id: int,
     ) -> None:
         """Handle burn event.
@@ -385,6 +462,7 @@ class ThirdwebEventHandler:
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            token_image_url: Token image URL
             discord_channel_id: Discord channel for notifications
         """
         event = NFTBurnEvent.from_thirdweb_webhook(
@@ -394,6 +472,7 @@ class ThirdwebEventHandler:
             transaction_hash=transaction_hash,
             block_number=block_number,
             timestamp=timestamp,
+            token_image_url=token_image_url,
         )
 
         # Insert to database

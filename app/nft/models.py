@@ -43,6 +43,7 @@ class NFTMintEvent(BaseModel):
         collection_id: Database ID of the collection
         token_id: NFT token ID
         to_address: Address receiving the minted NFT
+        token_image_url: NFT image URL (if available)
         price_native: Mint price in native currency (ETH)
         price_usd: Mint price in USD (if available)
         transaction_hash: On-chain transaction hash
@@ -53,6 +54,7 @@ class NFTMintEvent(BaseModel):
     collection_id: int = Field(..., description="Database collection ID")
     token_id: str = Field(..., description="NFT token ID")
     to_address: str = Field(..., description="Minter/recipient address")
+    token_image_url: str | None = Field(None, description="NFT image URL")
     price_native: Decimal | None = Field(None, description="Mint price in ETH")
     price_usd: Decimal | None = Field(None, description="Mint price in USD")
     transaction_hash: str | None = Field(None, description="Transaction hash")
@@ -91,6 +93,7 @@ class NFTMintEvent(BaseModel):
         timestamp: datetime,
         price_native: Decimal | None = None,
         price_usd: Decimal | None = None,
+        token_image_url: str | None = None,
     ) -> "NFTMintEvent":
         """Create from Thirdweb Insight webhook data.
 
@@ -103,6 +106,7 @@ class NFTMintEvent(BaseModel):
             timestamp: Event timestamp
             price_native: Optional mint price in ETH
             price_usd: Optional mint price in USD
+            token_image_url: Optional token image URL
 
         Returns:
             NFTMintEvent instance
@@ -111,6 +115,7 @@ class NFTMintEvent(BaseModel):
             collection_id=collection_id,
             token_id=token_id,
             to_address=to_address,
+            token_image_url=token_image_url,
             price_native=price_native,
             price_usd=price_usd,
             transaction_hash=transaction_hash,
@@ -127,6 +132,7 @@ class NFTTransferEvent(BaseModel):
         token_id: NFT token ID
         from_address: Address sending the NFT
         to_address: Address receiving the NFT
+        token_image_url: NFT image URL (if available)
         transaction_hash: On-chain transaction hash
         block_number: Block number of the transaction
         event_timestamp: When the transfer occurred
@@ -136,6 +142,7 @@ class NFTTransferEvent(BaseModel):
     token_id: str = Field(..., description="NFT token ID")
     from_address: str = Field(..., description="Sender address")
     to_address: str = Field(..., description="Recipient address")
+    token_image_url: str | None = Field(None, description="NFT image URL")
     transaction_hash: str | None = Field(None, description="Transaction hash")
     block_number: int | None = Field(None, description="Block number")
     event_timestamp: datetime = Field(..., description="Event timestamp")
@@ -176,6 +183,7 @@ class NFTTransferEvent(BaseModel):
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        token_image_url: str | None = None,
     ) -> "NFTTransferEvent":
         """Create from Thirdweb Insight webhook data.
 
@@ -187,6 +195,7 @@ class NFTTransferEvent(BaseModel):
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            token_image_url: Optional token image URL
 
         Returns:
             NFTTransferEvent instance
@@ -196,6 +205,7 @@ class NFTTransferEvent(BaseModel):
             token_id=token_id,
             from_address=from_address,
             to_address=to_address,
+            token_image_url=token_image_url,
             transaction_hash=transaction_hash,
             block_number=block_number,
             event_timestamp=timestamp,
@@ -209,6 +219,7 @@ class NFTBurnEvent(BaseModel):
         collection_id: Database ID of the collection
         token_id: NFT token ID
         from_address: Address burning the NFT
+        token_image_url: NFT image URL (if available)
         transaction_hash: On-chain transaction hash
         block_number: Block number of the transaction
         event_timestamp: When the burn occurred
@@ -217,6 +228,7 @@ class NFTBurnEvent(BaseModel):
     collection_id: int = Field(..., description="Database collection ID")
     token_id: str = Field(..., description="NFT token ID")
     from_address: str = Field(..., description="Burner address")
+    token_image_url: str | None = Field(None, description="NFT image URL")
     transaction_hash: str | None = Field(None, description="Transaction hash")
     block_number: int | None = Field(None, description="Block number")
     event_timestamp: datetime = Field(..., description="Event timestamp")
@@ -251,6 +263,7 @@ class NFTBurnEvent(BaseModel):
         transaction_hash: str,
         block_number: int,
         timestamp: datetime,
+        token_image_url: str | None = None,
     ) -> "NFTBurnEvent":
         """Create from Thirdweb Insight webhook data.
 
@@ -261,6 +274,7 @@ class NFTBurnEvent(BaseModel):
             transaction_hash: Transaction hash
             block_number: Block number
             timestamp: Event timestamp
+            token_image_url: Optional token image URL
 
         Returns:
             NFTBurnEvent instance
@@ -269,6 +283,7 @@ class NFTBurnEvent(BaseModel):
             collection_id=collection_id,
             token_id=token_id,
             from_address=from_address,
+            token_image_url=token_image_url,
             transaction_hash=transaction_hash,
             block_number=block_number,
             event_timestamp=timestamp,
@@ -312,12 +327,6 @@ class NFTListingEvent(BaseModel):
     def normalize_address(cls, v: str) -> str:
         """Normalize address to lowercase."""
         return _format_address(v)
-
-    @field_validator("marketplace", mode="before")
-    @classmethod
-    def normalize_marketplace(cls, v: str) -> str:
-        """Normalize marketplace to lowercase."""
-        return v.lower()
 
     @field_validator("event_timestamp", mode="before")
     @classmethod
@@ -515,12 +524,6 @@ class NFTSaleEvent(BaseModel):
         """Normalize address to lowercase."""
         return _format_address(v)
 
-    @field_validator("marketplace", mode="before")
-    @classmethod
-    def normalize_marketplace(cls, v: str) -> str:
-        """Normalize marketplace to lowercase."""
-        return v.lower()
-
     @field_validator("event_timestamp", mode="before")
     @classmethod
     def ensure_timezone(cls, v: datetime | str) -> datetime:
@@ -712,12 +715,6 @@ class NFTDelistingEvent(BaseModel):
     def normalize_address(cls, v: str) -> str:
         """Normalize address to lowercase."""
         return _format_address(v)
-
-    @field_validator("marketplace", mode="before")
-    @classmethod
-    def normalize_marketplace(cls, v: str) -> str:
-        """Normalize marketplace to lowercase."""
-        return v.lower()
 
     @field_validator("event_timestamp", mode="before")
     @classmethod

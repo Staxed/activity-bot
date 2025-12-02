@@ -81,8 +81,12 @@ def create_mint_embed(event: NFTMintEvent, collection_name: str) -> discord.Embe
         timestamp=event.event_timestamp,
     )
 
+    if event.token_image_url:
+        embed.set_image(url=event.token_image_url)
+
+    # Two-column layout
     embed.add_field(
-        name="Minted by",
+        name="Minted By",
         value=f"`{event.short_to_address}`",
         inline=True,
     )
@@ -95,15 +99,12 @@ def create_mint_embed(event: NFTMintEvent, collection_name: str) -> discord.Embe
         )
 
     if event.transaction_hash:
-        # Link to block explorer based on chain (default to basescan)
         explorer_url = f"https://basescan.org/tx/{event.transaction_hash}"
         embed.add_field(
             name="Transaction",
             value=f"[View on Explorer]({explorer_url})",
             inline=True,
         )
-
-    embed.set_footer(text=f"Token ID: {event.token_id}")
 
     return embed
 
@@ -124,6 +125,10 @@ def create_transfer_embed(event: NFTTransferEvent, collection_name: str) -> disc
         timestamp=event.event_timestamp,
     )
 
+    if event.token_image_url:
+        embed.set_image(url=event.token_image_url)
+
+    # Two-column layout
     embed.add_field(
         name="From",
         value=f"`{event.short_from_address}`",
@@ -144,8 +149,6 @@ def create_transfer_embed(event: NFTTransferEvent, collection_name: str) -> disc
             inline=True,
         )
 
-    embed.set_footer(text=f"Token ID: {event.token_id}")
-
     return embed
 
 
@@ -165,8 +168,12 @@ def create_burn_embed(event: NFTBurnEvent, collection_name: str) -> discord.Embe
         timestamp=event.event_timestamp,
     )
 
+    if event.token_image_url:
+        embed.set_image(url=event.token_image_url)
+
+    # Two-column layout
     embed.add_field(
-        name="Burned by",
+        name="Burned By",
         value=f"`{event.short_from_address}`",
         inline=True,
     )
@@ -178,8 +185,6 @@ def create_burn_embed(event: NFTBurnEvent, collection_name: str) -> discord.Embe
             value=f"[View on Explorer]({explorer_url})",
             inline=True,
         )
-
-    embed.set_footer(text=f"Token ID: {event.token_id}")
 
     return embed
 
@@ -203,6 +208,11 @@ def create_listing_embed(event: NFTListingEvent, collection_name: str) -> discor
         timestamp=event.event_timestamp,
     )
 
+    # Image (Discord always places set_image at bottom)
+    if event.token_image_url:
+        embed.set_image(url=event.token_image_url)
+
+    # Row 1: Seller | Price
     embed.add_field(
         name="Seller",
         value=f"`{event.short_seller_address}`",
@@ -215,40 +225,24 @@ def create_listing_embed(event: NFTListingEvent, collection_name: str) -> discor
         inline=True,
     )
 
-    # Floor comparison
-    if event.floor_price_native:
-        floor_str = _format_eth_price(event.floor_price_native)
-        comparison = _format_floor_comparison(event.price_native, event.floor_price_native)
-        floor_display = f"{floor_str}"
-        if comparison:
-            floor_display += f" ({comparison})"
-        embed.add_field(
-            name="Floor",
-            value=floor_display,
-            inline=True,
-        )
-
-    # Rarity if available
+    # Row 2: Rarity | Marketplace (force new row)
     if event.rarity_rank:
         embed.add_field(
             name="Rarity",
             value=f"#{event.rarity_rank}",
+            inline=False,  # Force new row
+        )
+        embed.add_field(
+            name="Preferred Marketplace",
+            value=event.marketplace,
             inline=True,
         )
-
-    # Marketplace
-    marketplace_display = event.marketplace.replace("_", " ").title()
-    embed.add_field(
-        name="Marketplace",
-        value=marketplace_display,
-        inline=True,
-    )
-
-    # Set thumbnail if image available
-    if event.token_image_url:
-        embed.set_thumbnail(url=event.token_image_url)
-
-    embed.set_footer(text=f"{collection_name} • Token ID: {event.token_id}")
+    else:
+        embed.add_field(
+            name="Preferred Marketplace",
+            value=event.marketplace,
+            inline=False,  # Full width when alone
+        )
 
     return embed
 
@@ -272,6 +266,11 @@ def create_sale_embed(event: NFTSaleEvent, collection_name: str) -> discord.Embe
         timestamp=event.event_timestamp,
     )
 
+    # Image (Discord always places set_image at bottom)
+    if event.token_image_url:
+        embed.set_image(url=event.token_image_url)
+
+    # Row 1: Seller | Buyer
     embed.add_field(
         name="Seller",
         value=f"`{event.short_seller_address}`",
@@ -284,26 +283,14 @@ def create_sale_embed(event: NFTSaleEvent, collection_name: str) -> discord.Embe
         inline=True,
     )
 
+    # Row 2: Price (full width for emphasis)
     embed.add_field(
         name="Price",
         value=_format_eth_price(event.price_native, event.price_usd),
-        inline=True,
+        inline=False,
     )
 
-    # Floor comparison
-    if event.floor_price_native:
-        floor_str = _format_eth_price(event.floor_price_native)
-        comparison = _format_floor_comparison(event.price_native, event.floor_price_native)
-        floor_display = f"{floor_str}"
-        if comparison:
-            floor_display += f" ({comparison})"
-        embed.add_field(
-            name="Floor",
-            value=floor_display,
-            inline=True,
-        )
-
-    # Rarity if available
+    # Row 3: Rarity | Marketplace
     if event.rarity_rank:
         embed.add_field(
             name="Rarity",
@@ -311,19 +298,11 @@ def create_sale_embed(event: NFTSaleEvent, collection_name: str) -> discord.Embe
             inline=True,
         )
 
-    # Marketplace
-    marketplace_display = event.marketplace.replace("_", " ").title()
     embed.add_field(
-        name="Marketplace",
-        value=marketplace_display,
+        name="Preferred Marketplace",
+        value=event.marketplace,
         inline=True,
     )
-
-    # Set thumbnail if image available
-    if event.token_image_url:
-        embed.set_thumbnail(url=event.token_image_url)
-
-    embed.set_footer(text=f"{collection_name} • Token ID: {event.token_id}")
 
     return embed
 
@@ -347,6 +326,11 @@ def create_delisting_embed(event: NFTDelistingEvent, collection_name: str) -> di
         timestamp=event.event_timestamp,
     )
 
+    # Large image at top
+    if event.token_image_url:
+        embed.set_image(url=event.token_image_url)
+
+    # Two-column layout
     embed.add_field(
         name="Seller",
         value=f"`{event.short_seller_address}`",
@@ -360,14 +344,10 @@ def create_delisting_embed(event: NFTDelistingEvent, collection_name: str) -> di
             inline=True,
         )
 
-    # Marketplace
-    marketplace_display = event.marketplace.replace("_", " ").title()
     embed.add_field(
-        name="Marketplace",
-        value=marketplace_display,
+        name="Preferred Marketplace",
+        value=event.marketplace,
         inline=True,
     )
-
-    embed.set_footer(text=f"{collection_name} • Token ID: {event.token_id}")
 
     return embed

@@ -33,6 +33,7 @@ class MarketplaceClient(ABC):
         chain: str,
         since: datetime | None = None,
         collection_db_id: int | None = None,
+        collection_slug: str | None = None,
     ) -> list["NFTListingEvent"]:
         """Fetch new listings for a collection.
 
@@ -41,6 +42,7 @@ class MarketplaceClient(ABC):
             chain: Blockchain network
             since: Only fetch listings after this timestamp
             collection_db_id: Database ID of the collection (for event creation)
+            collection_slug: Collection slug/identifier (used by some APIs like OpenSea)
 
         Returns:
             List of NFTListingEvent objects
@@ -54,6 +56,7 @@ class MarketplaceClient(ABC):
         chain: str,
         since: datetime | None = None,
         collection_db_id: int | None = None,
+        collection_slug: str | None = None,
     ) -> list["NFTSaleEvent"]:
         """Fetch new sales for a collection.
 
@@ -62,6 +65,7 @@ class MarketplaceClient(ABC):
             chain: Blockchain network
             since: Only fetch sales after this timestamp
             collection_db_id: Database ID of the collection (for event creation)
+            collection_slug: Collection slug/identifier (used by some APIs like OpenSea)
 
         Returns:
             List of NFTSaleEvent objects
@@ -91,6 +95,7 @@ class MarketplaceClient(ABC):
         chain: str,
         since: datetime | None = None,
         collection_db_id: int | None = None,
+        collection_slug: str | None = None,
     ) -> list["NFTDelistingEvent"]:
         """Fetch cancelled listings for a collection.
 
@@ -102,6 +107,7 @@ class MarketplaceClient(ABC):
             chain: Blockchain network
             since: Only fetch delistings after this timestamp
             collection_db_id: Database ID of the collection (for event creation)
+            collection_slug: Collection slug/identifier (used by some APIs like OpenSea)
 
         Returns:
             List of NFTDelistingEvent objects

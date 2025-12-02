@@ -2301,11 +2301,10 @@ class DatabaseClient:
             INSERT INTO nft_collections (
                 collection_id, name, chain, contract_address, discord_channel_id, is_active
             ) VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (collection_id)
+            ON CONFLICT (chain, contract_address)
             DO UPDATE SET
+                collection_id = $1,
                 name = $2,
-                chain = $3,
-                contract_address = $4,
                 discord_channel_id = $5,
                 is_active = $6
             RETURNING id
