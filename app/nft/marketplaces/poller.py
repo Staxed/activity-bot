@@ -224,7 +224,11 @@ class MarketplacePollingService:
                 inserted = await self.db.insert_nft_listing(listing)
                 if inserted and self.poster:
                     await self.poster.post_listing(
-                        listing, collection.name, collection.discord_channel_id
+                        listing,
+                        collection.name,
+                        collection.discord_channel_id,
+                        chain=collection.chain,
+                        contract_address=collection.contract_address,
                     )
                     await self.db.mark_nft_listing_posted(
                         db_collection_id, marketplace_name, listing.listing_id
@@ -238,7 +242,10 @@ class MarketplacePollingService:
                 inserted = await self.db.insert_nft_sale(sale)
                 if inserted and self.poster:
                     await self.poster.post_sale(
-                        sale, collection.name, collection.discord_channel_id
+                        sale,
+                        collection.name,
+                        collection.discord_channel_id,
+                        chain=collection.chain,
                     )
                     await self.db.mark_nft_sale_posted(
                         db_collection_id, marketplace_name, sale.sale_id

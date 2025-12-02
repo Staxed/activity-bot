@@ -709,6 +709,7 @@ class NFTDelistingEvent(BaseModel):
         collection_id: Database ID of the collection
         token_id: NFT token ID
         token_name: NFT name (if available)
+        token_image_url: Token image URL (if available)
         seller_address: Seller's address
         marketplace: Marketplace name
         original_price_native: Price it was listed at
@@ -719,6 +720,7 @@ class NFTDelistingEvent(BaseModel):
     collection_id: int = Field(..., description="Database collection ID")
     token_id: str = Field(..., description="NFT token ID")
     token_name: str | None = Field(None, description="NFT name")
+    token_image_url: str | None = Field(None, description="Token image URL")
     seller_address: str = Field(..., description="Seller address")
     marketplace: str = Field(..., description="Marketplace name")
     original_price_native: Decimal | None = Field(None, description="Original listing price")

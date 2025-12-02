@@ -3009,14 +3009,15 @@ class DatabaseClient:
 
     async def get_unposted_nft_listings(
         self, max_age_hours: int = 12
-    ) -> list[tuple[int, "NFTListingEvent", str, int]]:
+    ) -> list[tuple[int, "NFTListingEvent", str, int, str, str]]:
         """Get unposted NFT listing events for recovery.
 
         Args:
             max_age_hours: Maximum age of events to retrieve
 
         Returns:
-            List of tuples: (db_id, NFTListingEvent, collection_name, discord_channel_id)
+            List of tuples: (db_id, NFTListingEvent, collection_name, discord_channel_id,
+                           chain, contract_address)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -3027,7 +3028,8 @@ class DatabaseClient:
         from app.nft.models import NFTListingEvent
 
         query = """
-            SELECT l.*, c.name as collection_name, c.discord_channel_id
+            SELECT l.*, c.name as collection_name, c.discord_channel_id,
+                   c.chain, c.contract_address
             FROM nft_listings l
             JOIN nft_collections c ON l.collection_id = c.id
             WHERE l.posted_to_discord = FALSE
@@ -3062,6 +3064,8 @@ class DatabaseClient:
                             event,
                             row["collection_name"],
                             row["discord_channel_id"],
+                            row["chain"],
+                            row["contract_address"],
                         )
                     )
                 return results
@@ -3071,14 +3075,14 @@ class DatabaseClient:
 
     async def get_unposted_nft_sales(
         self, max_age_hours: int = 12
-    ) -> list[tuple[int, "NFTSaleEvent", str, int]]:
+    ) -> list[tuple[int, "NFTSaleEvent", str, int, str]]:
         """Get unposted NFT sale events for recovery.
 
         Args:
             max_age_hours: Maximum age of events to retrieve
 
         Returns:
-            List of tuples: (db_id, NFTSaleEvent, collection_name, discord_channel_id)
+            List of tuples: (db_id, NFTSaleEvent, collection_name, discord_channel_id, chain)
 
         Raises:
             DatabaseError: If connection pool is not initialized or query fails
@@ -3089,7 +3093,7 @@ class DatabaseClient:
         from app.nft.models import NFTSaleEvent
 
         query = """
-            SELECT s.*, c.name as collection_name, c.discord_channel_id
+            SELECT s.*, c.name as collection_name, c.discord_channel_id, c.chain
             FROM nft_sales s
             JOIN nft_collections c ON s.collection_id = c.id
             WHERE s.posted_to_discord = FALSE
@@ -3124,6 +3128,7 @@ class DatabaseClient:
                             event,
                             row["collection_name"],
                             row["discord_channel_id"],
+                            row["chain"],
                         )
                     )
                 return results

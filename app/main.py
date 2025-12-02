@@ -328,9 +328,11 @@ async def recover_unposted_nft_events(
                 logger.warning("nft.recovery.burn.failed", error=str(e), token_id=event.token_id)
 
         # Post listing events
-        for db_id, event, collection_name, channel_id in listings:
+        for db_id, event, collection_name, channel_id, chain, contract_address in listings:
             try:
-                await nft_poster.post_listing(event, collection_name, channel_id)
+                await nft_poster.post_listing(
+                    event, collection_name, channel_id, chain=chain, contract_address=contract_address
+                )
                 await db.mark_nft_listing_posted(
                     event.collection_id, event.marketplace, event.listing_id
                 )
@@ -338,9 +340,9 @@ async def recover_unposted_nft_events(
                 logger.warning("nft.recovery.listing.failed", error=str(e), token_id=event.token_id)
 
         # Post sale events
-        for db_id, event, collection_name, channel_id in sales:
+        for db_id, event, collection_name, channel_id, chain in sales:
             try:
-                await nft_poster.post_sale(event, collection_name, channel_id)
+                await nft_poster.post_sale(event, collection_name, channel_id, chain=chain)
                 await db.mark_nft_sale_posted(event.collection_id, event.marketplace, event.sale_id)
             except Exception as e:
                 logger.warning("nft.recovery.sale.failed", error=str(e), token_id=event.token_id)

@@ -181,6 +181,8 @@ class NFTPoster:
         event: NFTListingEvent,
         collection_name: str,
         channel_id: int,
+        chain: str | None = None,
+        contract_address: str | None = None,
     ) -> None:
         """Post listing event to Discord.
 
@@ -188,10 +190,12 @@ class NFTPoster:
             event: Listing event data
             collection_name: Human-readable collection name
             channel_id: Discord channel ID to post to
+            chain: Blockchain network (for marketplace link)
+            contract_address: NFT contract address (for marketplace link)
         """
         try:
             channel = await self._get_channel(channel_id)
-            embed = create_listing_embed(event, collection_name)
+            embed = create_listing_embed(event, collection_name, chain, contract_address)
             await channel.send(embed=embed)
 
             logger.info(
@@ -218,6 +222,7 @@ class NFTPoster:
         event: NFTSaleEvent,
         collection_name: str,
         channel_id: int,
+        chain: str | None = None,
     ) -> None:
         """Post sale event to Discord.
 
@@ -225,10 +230,11 @@ class NFTPoster:
             event: Sale event data
             collection_name: Human-readable collection name
             channel_id: Discord channel ID to post to
+            chain: Blockchain network (for transaction link)
         """
         try:
             channel = await self._get_channel(channel_id)
-            embed = create_sale_embed(event, collection_name)
+            embed = create_sale_embed(event, collection_name, chain)
             await channel.send(embed=embed)
 
             logger.info(

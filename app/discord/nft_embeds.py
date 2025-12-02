@@ -66,6 +66,20 @@ def _format_marketplace(marketplace: str) -> str:
     return MARKETPLACE_DISPLAY_NAMES.get(marketplace, marketplace.replace("_", " ").title())
 
 
+def _get_magic_eden_item_url(chain: str, contract_address: str, token_id: str) -> str:
+    """Get Magic Eden item detail URL.
+
+    Args:
+        chain: Blockchain network name
+        contract_address: NFT contract address
+        token_id: Token ID
+
+    Returns:
+        URL to item on Magic Eden
+    """
+    return f"https://magiceden.us/item-details/{chain}/{contract_address}/{token_id}"
+
+
 def _format_eth_price(price: Decimal | None, price_usd: Decimal | None = None) -> str:
     """Format ETH price with optional USD value.
 
@@ -147,7 +161,7 @@ def create_mint_embed(event: NFTMintEvent, collection_name: str) -> discord.Embe
         embed.add_field(
             name="Transaction",
             value=f"[View on Explorer]({explorer_url})",
-            inline=True,
+            inline=False,
         )
 
     return embed
@@ -175,7 +189,7 @@ def create_transfer_embed(event: NFTTransferEvent, collection_name: str) -> disc
     # Two-column layout
     embed.add_field(
         name="From",
-        value=f"`{event.short_from_address}`",
+        value="Aeon Forge",
         inline=True,
     )
 
@@ -190,7 +204,7 @@ def create_transfer_embed(event: NFTTransferEvent, collection_name: str) -> disc
         embed.add_field(
             name="Transaction",
             value=f"[View on Explorer]({explorer_url})",
-            inline=True,
+            inline=False,
         )
 
     return embed
@@ -233,12 +247,19 @@ def create_burn_embed(event: NFTBurnEvent, collection_name: str) -> discord.Embe
     return embed
 
 
-def create_listing_embed(event: NFTListingEvent, collection_name: str) -> discord.Embed:
+def create_listing_embed(
+    event: NFTListingEvent,
+    collection_name: str,
+    chain: str | None = None,
+    contract_address: str | None = None,
+) -> discord.Embed:
     """Create Discord embed for listing event.
 
     Args:
         event: Listing event data
         collection_name: Human-readable collection name
+        chain: Blockchain network (for Magic Eden link)
+        contract_address: NFT contract address (for Magic Eden link)
 
     Returns:
         Discord embed ready to send
@@ -269,7 +290,14 @@ def create_listing_embed(event: NFTListingEvent, collection_name: str) -> discor
         inline=True,
     )
 
-    # Row 2: Rarity | Marketplace (force new row)
+    # Row 2: Rarity | View on Marketplace
+    marketplace_name = _format_marketplace(event.marketplace)
+    if chain and contract_address:
+        me_url = _get_magic_eden_item_url(chain, contract_address, event.token_id)
+        marketplace_value = f"[View on {marketplace_name}]({me_url})"
+    else:
+        marketplace_value = marketplace_name
+
     if event.rarity_rank:
         embed.add_field(
             name="Rarity",
@@ -277,26 +305,31 @@ def create_listing_embed(event: NFTListingEvent, collection_name: str) -> discor
             inline=False,  # Force new row
         )
         embed.add_field(
-            name="Preferred Marketplace",
-            value=_format_marketplace(event.marketplace),
+            name="Marketplace",
+            value=marketplace_value,
             inline=True,
         )
     else:
         embed.add_field(
-            name="Preferred Marketplace",
-            value=_format_marketplace(event.marketplace),
+            name="Marketplace",
+            value=marketplace_value,
             inline=False,  # Full width when alone
         )
 
     return embed
 
 
-def create_sale_embed(event: NFTSaleEvent, collection_name: str) -> discord.Embed:
+def create_sale_embed(
+    event: NFTSaleEvent,
+    collection_name: str,
+    chain: str | None = None,
+) -> discord.Embed:
     """Create Discord embed for sale event.
 
     Args:
         event: Sale event data
         collection_name: Human-readable collection name
+        chain: Blockchain network (for transaction link)
 
     Returns:
         Discord embed ready to send
@@ -334,7 +367,7 @@ def create_sale_embed(event: NFTSaleEvent, collection_name: str) -> discord.Embe
         inline=False,
     )
 
-    # Row 3: Rarity | Marketplace
+    # Row 3: Rarity | Transaction
     if event.rarity_rank:
         embed.add_field(
             name="Rarity",
@@ -342,11 +375,14 @@ def create_sale_embed(event: NFTSaleEvent, collection_name: str) -> discord.Embe
             inline=True,
         )
 
-    embed.add_field(
-        name="Preferred Marketplace",
-        value=_format_marketplace(event.marketplace),
-        inline=True,
-    )
+    # Transaction link (sale_id is the transaction hash from Magic Eden)
+    if chain and event.sale_id:
+        explorer_url = _get_explorer_url(chain, event.sale_id)
+        embed.add_field(
+            name="Transaction",
+            value=f"[View on Explorer]({explorer_url})",
+            inline=True,
+        )
 
     return embed
 
