@@ -344,7 +344,7 @@ def create_sale_embed(event: NFTSaleEvent, collection_name: str) -> discord.Embe
 
     embed.add_field(
         name="Preferred Marketplace",
-        value=event.marketplace,
+        value=_format_marketplace(event.marketplace),
         inline=True,
     )
 
@@ -390,7 +390,7 @@ def create_delisting_embed(event: NFTDelistingEvent, collection_name: str) -> di
 
     embed.add_field(
         name="Preferred Marketplace",
-        value=event.marketplace,
+        value=_format_marketplace(event.marketplace),
         inline=True,
     )
 
