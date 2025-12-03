@@ -243,12 +243,24 @@ class PullRequestEvent(BaseModel):
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
+        # Get state from PR data, or infer from action if missing
+        action = payload["action"]
+        state = pr.get("state")
+        if state is None:
+            # Infer state from action when not provided by API
+            if action in ("opened", "reopened", "ready_for_review", "review_requested"):
+                state = "open"
+            elif action in ("closed",):
+                state = "closed"
+            else:
+                state = "open"  # Default fallback
+
         return cls(
             event_id=event["id"],
             pr_number=pr["number"],
-            action=payload["action"],
+            action=action,
             title=pr.get("title"),
-            state=pr["state"],
+            state=state,
             merged=pr.get("merged", False),
             author_username=event["actor"]["login"],
             author_avatar_url=event["actor"]["avatar_url"],
