@@ -222,14 +222,18 @@ async def calculate_time_patterns(db: "DatabaseClient", username: str) -> TimePa
 
 
 async def calculate_repo_stats(
-    db: "DatabaseClient", username: str, since: datetime | None = None
+    db: "DatabaseClient",
+    username: str,
+    since: datetime | None = None,
+    until: datetime | None = None,
 ) -> list[RepoStats]:
     """Calculate per-repository statistics.
 
     Args:
         db: Database client
         username: GitHub username
-        since: Optional start time to filter events
+        since: Optional start time to filter events (inclusive)
+        until: Optional end time to filter events (exclusive)
 
     Returns:
         List of RepoStats sorted by total_events descending
@@ -242,7 +246,7 @@ async def calculate_repo_stats(
 
     try:
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_REPO_STATS, username, since)
+            rows = await conn.fetch(GET_REPO_STATS, username, since, until)
             return [
                 RepoStats(
                     repo_full_name=row["repo_full_name"],

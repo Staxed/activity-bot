@@ -1,10 +1,12 @@
 """Summary generation for daily/weekly/monthly stats reports."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import discord
+import pytz
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.discord.event_colors import SUMMARY_COLOR
 from app.stats.calculator import calculate_repo_stats
@@ -24,21 +26,42 @@ async def generate_daily_summary(
     Args:
         db: Database client
         username: GitHub username
-        target_date: Optional date to generate summary for (defaults to yesterday)
+        target_date: Optional date to generate summary for (defaults to yesterday in user's timezone)
 
     Returns:
         Discord embed with daily summary
     """
-    if target_date is None:
-        # Get yesterday in UTC as naive datetime (database stores naive timestamps)
-        target_date = datetime.now(UTC).replace(
-            hour=0, minute=0, second=0, microsecond=0, tzinfo=None
-        )
-        target_date -= timedelta(days=1)  # Yesterday
+    # Use configured timezone for day boundaries
+    settings = get_settings()
+    tz = pytz.timezone(settings.stats_timezone)
 
-    # Ensure datetimes are naive (database columns are TIMESTAMP without timezone)
-    day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-    day_end = day_start + timedelta(days=1)
+    if target_date is None:
+        # Get yesterday in user's local timezone
+        now_local = datetime.now(tz)
+        target_date_local = now_local.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=1)
+    else:
+        # If target_date provided, localize it to user's timezone
+        if target_date.tzinfo is None:
+            target_date_local = tz.localize(target_date.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ))
+        else:
+            target_date_local = target_date.astimezone(tz).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+
+    # Calculate day boundaries in local timezone, then convert to UTC for database
+    day_start_local = target_date_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end_local = day_start_local + timedelta(days=1)
+
+    # Convert to UTC naive datetimes for database queries (stored as naive UTC)
+    day_start = day_start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    day_end = day_end_local.astimezone(pytz.UTC).replace(tzinfo=None)
+
+    # Keep local date for display purposes
+    display_date = day_start_local.replace(tzinfo=None)
 
     # Get commits for the day
     commits_query = """
@@ -77,13 +100,13 @@ async def generate_daily_summary(
     streaks = await calculate_all_streaks(db, username)
     daily_streak = streaks.get("daily")
 
-    # Get repos for the period
-    repos = await calculate_repo_stats(db, username, since=day_start)
+    # Get repos for the period (bounded by day_start and day_end)
+    repos = await calculate_repo_stats(db, username, since=day_start, until=day_end)
 
     # Create embed
     embed = discord.Embed(
         title=f"📊 Daily Summary for {username}",
-        description=f"Activity for {target_date.strftime('%B %d, %Y')}",
+        description=f"Activity for {display_date.strftime('%B %d, %Y')}",
         color=SUMMARY_COLOR,
     )
 
@@ -143,22 +166,43 @@ async def generate_weekly_summary(
     Args:
         db: Database client
         username: GitHub username
-        week_start: Optional Monday date to start week (defaults to last Monday)
+        week_start: Optional Monday date to start week (defaults to last Monday in user's timezone)
 
     Returns:
         Discord embed with weekly summary
     """
-    if week_start is None:
-        # Get last Monday as naive datetime (database stores naive timestamps)
-        now = datetime.now(UTC).replace(tzinfo=None)
-        days_since_monday = now.weekday()
-        week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
-            days=days_since_monday + 7
-        )
+    # Use configured timezone for week boundaries
+    settings = get_settings()
+    tz = pytz.timezone(settings.stats_timezone)
 
-    # Ensure datetimes are naive
-    week_start = week_start.replace(tzinfo=None) if week_start.tzinfo else week_start
-    week_end = week_start + timedelta(days=7)
+    if week_start is None:
+        # Get last Monday in user's local timezone
+        now_local = datetime.now(tz)
+        days_since_monday = now_local.weekday()
+        week_start_local = now_local.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=days_since_monday + 7)
+    else:
+        # If week_start provided, localize it to user's timezone
+        if week_start.tzinfo is None:
+            week_start_local = tz.localize(week_start.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ))
+        else:
+            week_start_local = week_start.astimezone(tz).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+
+    # Calculate week boundaries in local timezone
+    week_end_local = week_start_local + timedelta(days=7)
+
+    # Convert to UTC naive datetimes for database queries
+    week_start = week_start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    week_end = week_end_local.astimezone(pytz.UTC).replace(tzinfo=None)
+
+    # Keep local dates for display purposes
+    display_week_start = week_start_local.replace(tzinfo=None)
+    display_week_end = week_end_local.replace(tzinfo=None)
 
     # Get week-specific counts
     if not db.pool:
@@ -227,13 +271,13 @@ async def generate_weekly_summary(
     streaks = await calculate_all_streaks(db, username)
     weekly_streak = streaks.get("weekly")
 
-    # Get repos for the period
-    repos = await calculate_repo_stats(db, username, since=week_start)
+    # Get repos for the period (bounded by week_start and week_end)
+    repos = await calculate_repo_stats(db, username, since=week_start, until=week_end)
 
     # Create embed
     # week_end is exclusive boundary, so display the last day of the week (week_end - 1)
-    week_last_day = week_end - timedelta(days=1)
-    week_label = f"{week_start.strftime('%b %d')} - {week_last_day.strftime('%b %d, %Y')}"
+    week_last_day = display_week_end - timedelta(days=1)
+    week_label = f"{display_week_start.strftime('%b %d')} - {week_last_day.strftime('%b %d, %Y')}"
     embed = discord.Embed(
         title=f"📅 Weekly Summary for {username}",
         description=f"Week of {week_label}",
@@ -301,31 +345,51 @@ async def generate_monthly_summary(
     Args:
         db: Database client
         username: GitHub username
-        month_start: Optional first day of month (defaults to last month)
+        month_start: Optional first day of month (defaults to last month in user's timezone)
 
     Returns:
         Discord embed with monthly summary
     """
+    # Use configured timezone for month boundaries
+    settings = get_settings()
+    tz = pytz.timezone(settings.stats_timezone)
+
     if month_start is None:
-        # Get last month as naive datetime (database stores naive timestamps)
-        now = datetime.now(UTC).replace(tzinfo=None)
-        if now.month == 1:
-            month_start = now.replace(
-                year=now.year - 1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0
+        # Get last month in user's local timezone
+        now_local = datetime.now(tz)
+        if now_local.month == 1:
+            month_start_local = now_local.replace(
+                year=now_local.year - 1, month=12, day=1,
+                hour=0, minute=0, second=0, microsecond=0
             )
         else:
-            month_start = now.replace(
-                month=now.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0
+            month_start_local = now_local.replace(
+                month=now_local.month - 1, day=1,
+                hour=0, minute=0, second=0, microsecond=0
+            )
+    else:
+        # If month_start provided, localize it to user's timezone
+        if month_start.tzinfo is None:
+            month_start_local = tz.localize(month_start.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            ))
+        else:
+            month_start_local = month_start.astimezone(tz).replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
             )
 
-    # Ensure datetimes are naive
-    month_start = month_start.replace(tzinfo=None) if month_start.tzinfo else month_start
-
-    # Calculate next month start
-    if month_start.month == 12:
-        month_end = month_start.replace(year=month_start.year + 1, month=1, day=1)
+    # Calculate next month start in local timezone
+    if month_start_local.month == 12:
+        month_end_local = month_start_local.replace(year=month_start_local.year + 1, month=1, day=1)
     else:
-        month_end = month_start.replace(month=month_start.month + 1, day=1)
+        month_end_local = month_start_local.replace(month=month_start_local.month + 1, day=1)
+
+    # Convert to UTC naive datetimes for database queries
+    month_start = month_start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+    month_end = month_end_local.astimezone(pytz.UTC).replace(tzinfo=None)
+
+    # Keep local date for display purposes
+    display_month_start = month_start_local.replace(tzinfo=None)
 
     # Get month stats
     if not db.pool:
@@ -394,11 +458,11 @@ async def generate_monthly_summary(
     streaks = await calculate_all_streaks(db, username)
     monthly_streak = streaks.get("monthly")
 
-    # Get repos for the period
-    repos = await calculate_repo_stats(db, username, since=month_start)
+    # Get repos for the period (bounded by month_start and month_end)
+    repos = await calculate_repo_stats(db, username, since=month_start, until=month_end)
 
     # Create embed
-    month_label = month_start.strftime("%B %Y")
+    month_label = display_month_start.strftime("%B %Y")
     embed = discord.Embed(
         title=f"📊 Monthly Summary for {username}",
         description=f"Activity for {month_label}",

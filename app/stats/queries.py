@@ -183,7 +183,7 @@ GET_YEARLY_ACTIVITY = """
 """
 
 # Get repository statistics for a user
-# $1 = username, $2 = since timestamp (optional filter)
+# $1 = username, $2 = since timestamp (optional filter), $3 = until timestamp (optional filter)
 GET_REPO_STATS = """
     WITH all_repo_events AS (
         SELECT
@@ -192,6 +192,7 @@ GET_REPO_STATS = """
         FROM commits
         WHERE author_username = $1
           AND ($2::timestamp IS NULL OR commit_timestamp >= $2)
+          AND ($3::timestamp IS NULL OR commit_timestamp < $3)
         UNION ALL
         SELECT
             repo_owner || '/' || repo_name,
@@ -199,6 +200,7 @@ GET_REPO_STATS = """
         FROM pull_requests
         WHERE author_username = $1
           AND ($2::timestamp IS NULL OR event_timestamp >= $2)
+          AND ($3::timestamp IS NULL OR event_timestamp < $3)
         UNION ALL
         SELECT
             repo_owner || '/' || repo_name,
@@ -206,6 +208,7 @@ GET_REPO_STATS = """
         FROM issues
         WHERE author_username = $1
           AND ($2::timestamp IS NULL OR event_timestamp >= $2)
+          AND ($3::timestamp IS NULL OR event_timestamp < $3)
         UNION ALL
         SELECT
             repo_owner || '/' || repo_name,
@@ -213,6 +216,7 @@ GET_REPO_STATS = """
         FROM pr_reviews
         WHERE reviewer_username = $1
           AND ($2::timestamp IS NULL OR event_timestamp >= $2)
+          AND ($3::timestamp IS NULL OR event_timestamp < $3)
     )
     SELECT
         repo_full_name,
