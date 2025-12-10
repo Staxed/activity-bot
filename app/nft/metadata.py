@@ -9,21 +9,31 @@ logger = get_logger(__name__)
 # IPFS gateway for fetching metadata and images
 IPFS_GATEWAY = "https://aeonforge.mypinata.cloud/ipfs/"
 
-# Base RPC endpoint for contract calls
-BASE_RPC_URL = "https://mainnet.base.org"
+# RPC endpoints for contract calls
+RPC_URLS: dict[str, str] = {
+    "base": "https://mainnet.base.org",
+    "base-sepolia": "https://sepolia.base.org",
+}
 
 
 def convert_ipfs_url(url: str) -> str:
     """Convert an IPFS URL to use the configured gateway.
 
     Args:
-        url: URL that may start with ipfs://
+        url: URL that may start with ipfs:// or use ipfs.io gateway
 
     Returns:
         URL converted to use IPFS gateway, or original if not IPFS
     """
-    if url and url.startswith("ipfs://"):
+    if not url:
+        return url
+
+    if url.startswith("ipfs://"):
         return url.replace("ipfs://", IPFS_GATEWAY)
+
+    if url.startswith("https://ipfs.io/ipfs/"):
+        return url.replace("https://ipfs.io/ipfs/", IPFS_GATEWAY)
+
     return url
 
 
@@ -40,12 +50,13 @@ async def fetch_token_image(
     Args:
         contract_address: NFT contract address
         token_id: Token ID
-        chain: Blockchain network (currently only base supported)
+        chain: Blockchain network (base or base-sepolia)
 
     Returns:
         Image URL using IPFS gateway, or None if fetch fails
     """
-    if chain != "base":
+    rpc_url = RPC_URLS.get(chain)
+    if not rpc_url:
         logger.debug("metadata.fetch.unsupported_chain", chain=chain)
         return None
 
@@ -64,7 +75,7 @@ async def fetch_token_image(
 
         async with aiohttp.ClientSession() as session:
             # Call tokenURI on contract
-            async with session.post(BASE_RPC_URL, json=payload) as response:
+            async with session.post(rpc_url, json=payload) as response:
                 result = await response.json()
 
                 if "result" not in result or result["result"] == "0x":
