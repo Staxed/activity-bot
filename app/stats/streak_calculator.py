@@ -26,17 +26,29 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _get_configured_timezone() -> str:
+    """Get the configured stats timezone string.
+
+    Returns:
+        Timezone string (e.g., 'America/New_York')
+    """
+    settings = get_settings()
+    # Validate timezone exists, fall back to UTC if invalid
+    try:
+        pytz.timezone(settings.stats_timezone)
+        return settings.stats_timezone
+    except pytz.UnknownTimeZoneError:
+        return "UTC"
+
+
 def _get_today_in_configured_timezone() -> date:
     """Get today's date in the configured stats timezone.
 
     Returns:
         Today's date in the configured timezone
     """
-    settings = get_settings()
-    try:
-        tz = pytz.timezone(settings.stats_timezone)
-    except pytz.UnknownTimeZoneError:
-        tz = pytz.UTC
+    tz_str = _get_configured_timezone()
+    tz = pytz.timezone(tz_str)
     return datetime.now(tz).date()
 
 
@@ -106,8 +118,9 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
         raise DatabaseError("Connection pool not initialized")
 
     try:
+        timezone = _get_configured_timezone()
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_ACTIVITY_DATES, username)
+            rows = await conn.fetch(GET_ACTIVITY_DATES, username, timezone)
             if not rows:
                 return StreakInfo(
                     streak_type="daily", current_streak=0, longest_streak=0, last_activity_date=None
@@ -150,8 +163,9 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
         raise DatabaseError("Connection pool not initialized")
 
     try:
+        timezone = _get_configured_timezone()
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_ACTIVITY_DATES, username)
+            rows = await conn.fetch(GET_ACTIVITY_DATES, username, timezone)
             if not rows:
                 return StreakInfo(
                     streak_type="weekly",
@@ -250,8 +264,9 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
         raise DatabaseError("Connection pool not initialized")
 
     try:
+        timezone = _get_configured_timezone()
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_ACTIVITY_DATES, username)
+            rows = await conn.fetch(GET_ACTIVITY_DATES, username, timezone)
             if not rows:
                 return StreakInfo(
                     streak_type="monthly",
@@ -379,8 +394,9 @@ async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> Streak
         raise DatabaseError("Connection pool not initialized")
 
     try:
+        timezone = _get_configured_timezone()
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(GET_ACTIVITY_DATES, username)
+            rows = await conn.fetch(GET_ACTIVITY_DATES, username, timezone)
             if not rows:
                 return StreakInfo(
                     streak_type="yearly",

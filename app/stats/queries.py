@@ -147,9 +147,9 @@ GET_DAILY_COMMIT_COUNT = """
 """
 
 # Get distinct activity dates for streak calculation
-# $1 = username
+# $1 = username, $2 = timezone (e.g., 'America/New_York')
 GET_ACTIVITY_DATES = """
-    SELECT DISTINCT DATE(commit_timestamp) as activity_date
+    SELECT DISTINCT DATE(commit_timestamp AT TIME ZONE 'UTC' AT TIME ZONE $2) as activity_date
     FROM commits
     WHERE author_username = $1
     ORDER BY activity_date DESC
