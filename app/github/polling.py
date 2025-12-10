@@ -763,7 +763,9 @@ class GitHubPollingService:
             discord_poster: Optional Discord poster for announcements
         """
         try:
-            from datetime import UTC, datetime
+            from datetime import datetime
+
+            import pytz
 
             from app.discord.stats_embeds import create_achievement_announcement_embed
             from app.stats.achievement_checker import (
@@ -773,8 +775,12 @@ class GitHubPollingService:
             )
             from app.stats.achievements import get_achievements
 
-            # Check achievements for today
-            today = datetime.now(UTC).date()
+            # Check achievements for today (using configured timezone)
+            try:
+                tz = pytz.timezone(self.settings.stats_timezone)
+            except pytz.UnknownTimeZoneError:
+                tz = pytz.UTC
+            today = datetime.now(tz).date()
             earned_achievements = await check_daily_achievements(self.db, username, today)
 
             if not earned_achievements:

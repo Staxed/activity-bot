@@ -8,11 +8,13 @@ Streak definitions:
 """
 
 import asyncio
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import asyncpg
+import pytz
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.shared.exceptions import DatabaseError
 from app.stats.models import StreakInfo
@@ -22,6 +24,20 @@ if TYPE_CHECKING:
     from app.core.database import DatabaseClient
 
 logger = get_logger(__name__)
+
+
+def _get_today_in_configured_timezone() -> date:
+    """Get today's date in the configured stats timezone.
+
+    Returns:
+        Today's date in the configured timezone
+    """
+    settings = get_settings()
+    try:
+        tz = pytz.timezone(settings.stats_timezone)
+    except pytz.UnknownTimeZoneError:
+        tz = pytz.UTC
+    return datetime.now(tz).date()
 
 
 def _get_consecutive_daily_streaks(activity_dates: list[date], today: date) -> tuple[int, int]:
@@ -98,7 +114,7 @@ async def calculate_daily_streak(db: "DatabaseClient", username: str) -> StreakI
                 )
 
             activity_dates = [row["activity_date"] for row in rows]
-            today = datetime.now(UTC).date()
+            today = _get_today_in_configured_timezone()
 
             current_streak, longest_streak = _get_consecutive_daily_streaks(activity_dates, today)
 
@@ -145,7 +161,7 @@ async def calculate_weekly_streak(db: "DatabaseClient", username: str) -> Streak
                 )
 
             activity_dates = [row["activity_date"] for row in rows]
-            today = datetime.now(UTC).date()
+            today = _get_today_in_configured_timezone()
 
             if not activity_dates:
                 return StreakInfo(
@@ -245,7 +261,7 @@ async def calculate_monthly_streak(db: "DatabaseClient", username: str) -> Strea
                 )
 
             activity_dates = [row["activity_date"] for row in rows]
-            today = datetime.now(UTC).date()
+            today = _get_today_in_configured_timezone()
 
             if not activity_dates:
                 return StreakInfo(
@@ -374,7 +390,7 @@ async def calculate_yearly_streak(db: "DatabaseClient", username: str) -> Streak
                 )
 
             activity_dates = [row["activity_date"] for row in rows]
-            today = datetime.now(UTC).date()
+            today = _get_today_in_configured_timezone()
 
             if not activity_dates:
                 return StreakInfo(
